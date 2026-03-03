@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::path::Path;
 use std::process::Command;
 
-pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
+pub async fn run(path: &Path, _config: &Config) -> Result<ScanResults> {
     let mut results = ScanResults::new();
 
     if which::which("gitleaks").is_err() {

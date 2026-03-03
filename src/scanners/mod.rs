@@ -126,7 +126,7 @@ fn print_scanner_start(name: &str) {
     print!("  {} {:<10} ... ", "▶".cyan(), name);
 }
 
-fn print_scanner_done(name: &str, results: &ScanResults) {
+fn print_scanner_done(_name: &str, results: &ScanResults) {
     let count = results.summary.total;
     if count == 0 {
         println!("{}", "0 findings".green());

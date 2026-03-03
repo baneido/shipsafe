@@ -75,7 +75,7 @@ async fn run_trivy(path: &Path, _config: &Config) -> Result<ScanResults> {
     Ok(results)
 }
 
-async fn run_grype(path: &Path, _config: &Config) -> Result<ScanResults> {
+async fn run_grype(_path: &Path, _config: &Config) -> Result<ScanResults> {
     let results = ScanResults::new();
     // TODO: Implement grype integration
     tracing::info!("Grype integration: coming soon");

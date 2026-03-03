@@ -1,8 +1,9 @@
-use crate::scanners::{Finding, ScanResults};
+use crate::scanners::ScanResults;
 use anyhow::Result;
 
 /// AI-powered triage: analyze findings for reachability and exploitability
 /// Uses Claude API to reduce false positives
+#[allow(dead_code)]
 pub async fn triage_findings(_results: &mut ScanResults) -> Result<()> {
     // TODO: Implement AI triage with Claude API
     // 1. Send finding context (code snippet, dependency graph) to Claude

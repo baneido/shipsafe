@@ -3,6 +3,7 @@ use anyhow::Result;
 
 /// AI-powered fix suggestion: generate code patches for findings
 /// Uses Claude API to create context-aware fix suggestions
+#[allow(dead_code)]
 pub async fn suggest_fix(_finding: &Finding, _code_context: &str) -> Result<Option<String>> {
     // TODO: Implement AI fix suggestions with Claude API
     // 1. Extract surrounding code context
