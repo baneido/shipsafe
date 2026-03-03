@@ -192,30 +192,28 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
     }
 
     let output = cmd.output()?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.is_empty() {
+        tracing::debug!("gitleaks stderr: {}", stderr);
+    }
+
+    if !output.status.success() {
+        let exit_code = output.status.code().unwrap_or(-1);
+        // Exit code 1 = leaks found (expected), other codes = actual errors
+        if exit_code != 1 {
+            tracing::warn!(
+                "gitleaks exited with status {}: {}",
+                exit_code,
+                stderr.lines().next().unwrap_or("(no details)")
+            );
+        }
+    }
+
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     results.findings = parse_gitleaks_output(&stdout, &allow_patterns);
-    results.summary.total = results.findings.len();
-    results.summary.critical = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Critical)
-        .count();
-    results.summary.high = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::High)
-        .count();
-    results.summary.medium = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Medium)
-        .count();
-    results.summary.low = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Low)
-        .count();
+    results.recalculate_summary();
 
     Ok(results)
 }
