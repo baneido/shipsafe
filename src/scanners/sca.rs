@@ -63,9 +63,41 @@ async fn run_trivy(path: &Path, _config: &Config) -> Result<ScanResults> {
         .arg(path)
         .output()?;
 
+    if !output.status.success() {
+        tracing::warn!(
+            "trivy exited with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     let stdout = String::from_utf8_lossy(&output.stdout);
     let results = parse_trivy_json(&stdout);
     Ok(results)
+}
+
+fn update_summary(results: &mut ScanResults) {
+    results.summary.total = results.findings.len();
+    results.summary.critical = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Critical)
+        .count();
+    results.summary.high = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::High)
+        .count();
+    results.summary.medium = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Medium)
+        .count();
+    results.summary.low = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Low)
+        .count();
 }
 
 fn parse_trivy_json(json_str: &str) -> ScanResults {
@@ -127,27 +159,7 @@ fn parse_trivy_json(json_str: &str) -> ScanResults {
         }
     }
 
-    results.summary.total = results.findings.len();
-    results.summary.critical = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Critical)
-        .count();
-    results.summary.high = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::High)
-        .count();
-    results.summary.medium = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Medium)
-        .count();
-    results.summary.low = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Low)
-        .count();
+    update_summary(&mut results);
     results
 }
 
@@ -158,6 +170,14 @@ async fn run_grype(path: &Path, _config: &Config) -> Result<ScanResults> {
         .arg("json")
         .arg("--quiet")
         .output()?;
+
+    if !output.status.success() {
+        tracing::warn!(
+            "grype exited with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let results = parse_grype_json(&stdout);
@@ -238,27 +258,7 @@ fn parse_grype_json(json_str: &str) -> ScanResults {
         }
     }
 
-    results.summary.total = results.findings.len();
-    results.summary.critical = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Critical)
-        .count();
-    results.summary.high = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::High)
-        .count();
-    results.summary.medium = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Medium)
-        .count();
-    results.summary.low = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Low)
-        .count();
+    update_summary(&mut results);
     results
 }
 
