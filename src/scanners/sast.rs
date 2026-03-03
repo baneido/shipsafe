@@ -13,7 +13,29 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
 
     let mut cmd = Command::new("semgrep");
     cmd.arg("scan").arg("--json").arg("--quiet").arg(path);
+    build_semgrep_args(&mut cmd, config);
 
+    let output = cmd.output()?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.is_empty() {
+        tracing::debug!("semgrep stderr: {}", stderr);
+    }
+
+    if !output.status.success() {
+        tracing::warn!(
+            "semgrep exited with status {}: {}",
+            output.status,
+            stderr.lines().next().unwrap_or("(no details)")
+        );
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_semgrep_json(&stdout)
+}
+
+/// Build semgrep rule config and exclude arguments.
+fn build_semgrep_args(cmd: &mut Command, config: &Config) {
     // Add rule configs; default to OWASP Top 10 if none specified
     let rules = &config.scanners.sast.rules;
     if rules.is_empty() {
@@ -38,16 +60,6 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
     for exclude in &config.scanners.sast.exclude {
         cmd.arg("--exclude").arg(exclude);
     }
-
-    let output = cmd.output()?;
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if !stderr.is_empty() {
-        tracing::debug!("semgrep stderr: {}", stderr);
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_semgrep_json(&stdout)
 }
 
 /// Map semgrep severity string to internal Severity enum.
@@ -304,18 +316,40 @@ mod tests {
             .contains(&"owasp-top-10".to_string()));
     }
 
+    /// Helper to extract args from a Command for testing.
+    fn get_args(cmd: &Command) -> Vec<String> {
+        cmd.get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect()
+    }
+
     #[test]
-    fn test_empty_rules_config_defaults_to_owasp() {
-        // When rules is empty, the run() function defaults to OWASP Top 10.
-        // We verify that an empty rules vector is distinct from the default config
-        // and that the default config has the expected OWASP rule.
+    fn test_empty_rules_defaults_to_owasp_args() {
         let mut config = Config::default();
         config.scanners.sast.rules = vec![];
-        assert!(config.scanners.sast.rules.is_empty());
+        config.scanners.sast.exclude = vec![];
 
-        // The default config should have owasp-top-10
-        let default_config = Config::default();
-        assert!(!default_config.scanners.sast.rules.is_empty());
-        assert_eq!(default_config.scanners.sast.rules[0], "owasp-top-10");
+        let mut cmd = Command::new("semgrep");
+        build_semgrep_args(&mut cmd, &config);
+
+        let args = get_args(&cmd);
+        assert!(args.contains(&"--config".to_string()));
+        assert!(args.contains(&"p/owasp-top-ten".to_string()));
+    }
+
+    #[test]
+    fn test_custom_rules_args() {
+        let mut config = Config::default();
+        config.scanners.sast.rules = vec!["owasp-top-10".into(), "ai-generated-code".into()];
+        config.scanners.sast.exclude = vec!["vendor".into()];
+
+        let mut cmd = Command::new("semgrep");
+        build_semgrep_args(&mut cmd, &config);
+
+        let args = get_args(&cmd);
+        assert!(args.contains(&"p/owasp-top-ten".to_string()));
+        assert!(args.contains(&"p/default".to_string()));
+        assert!(args.contains(&"--exclude".to_string()));
+        assert!(args.contains(&"vendor".to_string()));
     }
 }
