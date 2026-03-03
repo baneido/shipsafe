@@ -213,5 +213,5 @@ Pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 ---
 
 <p align="center">
-  Built with ❤️ by <a href="https://github.com/baneido">Baneido, Inc.</a>
+  Built with ❤️ by <a href="https://baneido.com">Baneido, Inc.</a>
 </p>
