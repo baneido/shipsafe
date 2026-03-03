@@ -28,7 +28,12 @@ pub struct SastConfig {
 }
 impl Default for SastConfig {
     fn default() -> Self {
-        Self { enabled: true, languages: vec![], rules: vec!["owasp-top-10".into()], exclude: vec![] }
+        Self {
+            enabled: true,
+            languages: vec![],
+            rules: vec!["owasp-top-10".into()],
+            exclude: vec![],
+        }
     }
 }
 
@@ -38,7 +43,12 @@ pub struct ScaConfig {
     pub fail_on_severity: String,
 }
 impl Default for ScaConfig {
-    fn default() -> Self { Self { enabled: true, fail_on_severity: "high".into() } }
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            fail_on_severity: "high".into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,7 +57,12 @@ pub struct SecretsConfig {
     pub allow_patterns: Vec<String>,
 }
 impl Default for SecretsConfig {
-    fn default() -> Self { Self { enabled: true, allow_patterns: vec![] } }
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            allow_patterns: vec![],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,7 +71,12 @@ pub struct OutputConfig {
     pub lang: String,
 }
 impl Default for OutputConfig {
-    fn default() -> Self { Self { format: "table".into(), lang: "en".into() } }
+    fn default() -> Self {
+        Self {
+            format: "table".into(),
+            lang: "en".into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

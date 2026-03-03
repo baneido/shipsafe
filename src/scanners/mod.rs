@@ -61,7 +61,13 @@ impl ScanResults {
     pub fn new() -> Self {
         Self {
             findings: vec![],
-            summary: ScanSummary { total: 0, critical: 0, high: 0, medium: 0, low: 0 },
+            summary: ScanSummary {
+                total: 0,
+                critical: 0,
+                high: 0,
+                medium: 0,
+                low: 0,
+            },
         }
     }
 
@@ -73,10 +79,26 @@ impl ScanResults {
     fn recalculate_summary(&mut self) {
         self.summary = ScanSummary {
             total: self.findings.len(),
-            critical: self.findings.iter().filter(|f| f.severity == Severity::Critical).count(),
-            high: self.findings.iter().filter(|f| f.severity == Severity::High).count(),
-            medium: self.findings.iter().filter(|f| f.severity == Severity::Medium).count(),
-            low: self.findings.iter().filter(|f| f.severity == Severity::Low).count(),
+            critical: self
+                .findings
+                .iter()
+                .filter(|f| f.severity == Severity::Critical)
+                .count(),
+            high: self
+                .findings
+                .iter()
+                .filter(|f| f.severity == Severity::High)
+                .count(),
+            medium: self
+                .findings
+                .iter()
+                .filter(|f| f.severity == Severity::Medium)
+                .count(),
+            low: self
+                .findings
+                .iter()
+                .filter(|f| f.severity == Severity::Low)
+                .count(),
         };
     }
 
@@ -88,7 +110,11 @@ impl ScanResults {
             "low" => Severity::Low,
             _ => Severity::Critical,
         };
-        if self.findings.iter().any(|f| f.severity >= threshold) { 1 } else { 0 }
+        if self.findings.iter().any(|f| f.severity >= threshold) {
+            1
+        } else {
+            0
+        }
     }
 }
 

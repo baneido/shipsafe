@@ -55,9 +55,11 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
 async fn run_trivy(path: &Path, _config: &Config) -> Result<ScanResults> {
     let output = Command::new("trivy")
         .arg("fs")
-        .arg("--format").arg("json")
+        .arg("--format")
+        .arg("json")
         .arg("--quiet")
-        .arg("--scanners").arg("vuln")
+        .arg("--scanners")
+        .arg("vuln")
         .arg(path)
         .output()?;
 
@@ -86,21 +88,37 @@ fn parse_trivy_json(json_str: &str) -> ScanResults {
                         _ => Severity::Low,
                     };
 
-                    let vuln_id = vuln.get("VulnerabilityID").and_then(|v| v.as_str()).unwrap_or("");
+                    let vuln_id = vuln
+                        .get("VulnerabilityID")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     let pkg_name = vuln.get("PkgName").and_then(|p| p.as_str()).unwrap_or("");
-                    let installed_ver = vuln.get("InstalledVersion").and_then(|v| v.as_str()).unwrap_or("");
+                    let installed_ver = vuln
+                        .get("InstalledVersion")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
 
                     let finding = Finding {
                         id: vuln_id.to_string(),
                         scanner: "sca".to_string(),
                         severity,
                         title: format!("{} in {}@{}", vuln_id, pkg_name, installed_ver),
-                        description: vuln.get("Title").and_then(|t| t.as_str()).unwrap_or("").to_string(),
+                        description: vuln
+                            .get("Title")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("")
+                            .to_string(),
                         file: target_file.to_string(),
                         line: None,
                         cwe: None,
-                        cve: if vuln_id.is_empty() { None } else { Some(vuln_id.to_string()) },
-                        fix_suggestion: vuln.get("FixedVersion").and_then(|v| v.as_str())
+                        cve: if vuln_id.is_empty() {
+                            None
+                        } else {
+                            Some(vuln_id.to_string())
+                        },
+                        fix_suggestion: vuln
+                            .get("FixedVersion")
+                            .and_then(|v| v.as_str())
                             .map(|v| format!("Upgrade to version {}", v)),
                     };
                     results.findings.push(finding);
@@ -110,17 +128,34 @@ fn parse_trivy_json(json_str: &str) -> ScanResults {
     }
 
     results.summary.total = results.findings.len();
-    results.summary.critical = results.findings.iter().filter(|f| f.severity == Severity::Critical).count();
-    results.summary.high = results.findings.iter().filter(|f| f.severity == Severity::High).count();
-    results.summary.medium = results.findings.iter().filter(|f| f.severity == Severity::Medium).count();
-    results.summary.low = results.findings.iter().filter(|f| f.severity == Severity::Low).count();
+    results.summary.critical = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Critical)
+        .count();
+    results.summary.high = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::High)
+        .count();
+    results.summary.medium = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Medium)
+        .count();
+    results.summary.low = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Low)
+        .count();
     results
 }
 
 async fn run_grype(path: &Path, _config: &Config) -> Result<ScanResults> {
     let output = Command::new("grype")
         .arg(format!("dir:{}", path.display()))
-        .arg("-o").arg("json")
+        .arg("-o")
+        .arg("json")
         .arg("--quiet")
         .output()?;
 
@@ -163,7 +198,8 @@ fn parse_grype_json(json_str: &str) -> ScanResults {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
 
-            let fixed_version = vuln.get("fix")
+            let fixed_version = vuln
+                .get("fix")
                 .and_then(|f| f.get("versions"))
                 .and_then(|v| v.as_array())
                 .and_then(|arr| arr.first())
@@ -177,7 +213,8 @@ fn parse_grype_json(json_str: &str) -> ScanResults {
                 .and_then(|p| p.as_str())
                 .unwrap_or("");
 
-            let description = vuln.get("description")
+            let description = vuln
+                .get("description")
                 .and_then(|d| d.as_str())
                 .unwrap_or("");
 
@@ -190,19 +227,38 @@ fn parse_grype_json(json_str: &str) -> ScanResults {
                 file: file.to_string(),
                 line: None,
                 cwe: None,
-                cve: if vuln_id.is_empty() { None } else { Some(vuln_id.to_string()) },
-                fix_suggestion: fixed_version
-                    .map(|v| format!("Upgrade to version {}", v)),
+                cve: if vuln_id.is_empty() {
+                    None
+                } else {
+                    Some(vuln_id.to_string())
+                },
+                fix_suggestion: fixed_version.map(|v| format!("Upgrade to version {}", v)),
             };
             results.findings.push(finding);
         }
     }
 
     results.summary.total = results.findings.len();
-    results.summary.critical = results.findings.iter().filter(|f| f.severity == Severity::Critical).count();
-    results.summary.high = results.findings.iter().filter(|f| f.severity == Severity::High).count();
-    results.summary.medium = results.findings.iter().filter(|f| f.severity == Severity::Medium).count();
-    results.summary.low = results.findings.iter().filter(|f| f.severity == Severity::Low).count();
+    results.summary.critical = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Critical)
+        .count();
+    results.summary.high = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::High)
+        .count();
+    results.summary.medium = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Medium)
+        .count();
+    results.summary.low = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Low)
+        .count();
     results
 }
 
@@ -249,7 +305,10 @@ mod tests {
         assert_eq!(f0.title, "CVE-2021-44228 in log4j-core@2.14.1");
         assert_eq!(f0.severity, Severity::Critical);
         assert_eq!(f0.file, "package-lock.json");
-        assert_eq!(f0.fix_suggestion, Some("Upgrade to version 2.17.0".to_string()));
+        assert_eq!(
+            f0.fix_suggestion,
+            Some("Upgrade to version 2.17.0".to_string())
+        );
         assert_eq!(f0.scanner, "sca");
 
         let f1 = &results.findings[1];
@@ -355,7 +414,10 @@ mod tests {
         assert_eq!(f0.title, "CVE-2023-12345 in example-lib@1.0.0");
         assert_eq!(f0.severity, Severity::Critical);
         assert_eq!(f0.file, "node_modules/example-lib/package.json");
-        assert_eq!(f0.fix_suggestion, Some("Upgrade to version 2.0.0".to_string()));
+        assert_eq!(
+            f0.fix_suggestion,
+            Some("Upgrade to version 2.0.0".to_string())
+        );
         assert_eq!(f0.description, "Critical vulnerability in example-lib");
         assert_eq!(f0.scanner, "sca");
 
