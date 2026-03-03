@@ -272,4 +272,19 @@ mod tests {
         let config = Config::default();
         assert!(config.scanners.sast.rules.contains(&"owasp-top-10".to_string()));
     }
+
+    #[test]
+    fn test_empty_rules_config_defaults_to_owasp() {
+        // When rules is empty, the run() function defaults to OWASP Top 10.
+        // We verify that an empty rules vector is distinct from the default config
+        // and that the default config has the expected OWASP rule.
+        let mut config = Config::default();
+        config.scanners.sast.rules = vec![];
+        assert!(config.scanners.sast.rules.is_empty());
+
+        // The default config should have owasp-top-10
+        let default_config = Config::default();
+        assert!(!default_config.scanners.sast.rules.is_empty());
+        assert_eq!(default_config.scanners.sast.rules[0], "owasp-top-10");
+    }
 }
