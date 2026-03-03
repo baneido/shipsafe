@@ -1,6 +1,6 @@
 name: 'ShipSafe Security Scan'
 description: 'AI-Powered Pre-Deploy Security Gate - SAST, SCA, and Secrets scanning in one action'
-author: 'Canary Corporation'
+author: 'Baneido, Inc.'
 
 branding:
   icon: 'shield'

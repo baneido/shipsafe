@@ -2,7 +2,7 @@
 name = "shipsafe"
 version = "0.1.0"
 edition = "2021"
-authors = ["Canary Corporation <dev@canary-corp.jp>"]
+authors = ["Baneido <contact@baneido.com>"]
 description = "AI-Powered Pre-Deploy Security Gate"
 license = "MIT"
 repository = "https://github.com/baneido/shipsafe"

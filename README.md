@@ -6,15 +6,15 @@
 
 <p align="center">
   <strong>AI-Powered Pre-Deploy Security Gate</strong><br>
-  Deploy前にコード・依存関係・シークレットを一括スキャン。AIがノイズを除去し、修正提案まで出す。
+  Scan code, dependencies, and secrets in one shot before deploying. AI filters out noise and suggests fixes.
 </p>
 
 <p align="center">
-  <a href="#インストール">インストール</a> •
-  <a href="#クイックスタート">クイックスタート</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#quick-start">Quick Start</a> •
   <a href="#github-actions">GitHub Actions</a> •
-  <a href="#機能">機能</a> •
-  <a href="#ドキュメント">ドキュメント</a>
+  <a href="#features">Features</a> •
+  <a href="#documentation">Documentation</a>
 </p>
 
 <p align="center">
@@ -25,19 +25,19 @@
 
 ---
 
-## なぜ ShipSafe？
+## Why ShipSafe?
 
-開発者の **78%** が「セキュリティツールが多すぎる」と感じています。SAST、SCA、シークレット検出…バラバラのツールを管理し、大量のアラートに溺れる日々。
+78% of developers say "there are too many security tools." SAST, SCA, secret detection… managing disparate tools and drowning in a flood of alerts every day.
 
-**ShipSafe** はこの問題を解決します:
+ShipSafe consolidates all of this into a single command:
 
-- 🔗 **1コマンドで統合スキャン** — SAST + SCA + シークレット検出を一括実行
-- ⚡ **1行でCI/CD統合** — GitHub Actionsに `uses: baneido/shipsafe@v1` を追加するだけ
-- 🤖 **AIがノイズを除去** — 到達可能性分析で本当に危険な脆弱性だけを表示
-- 🔧 **AIが修正提案** — PRコメントで修正コードを提示（Pro版）
-- 🇯🇵 **日本語ネイティブ対応** — CLI出力・レポートを日本語で表示
+- Unified scan in one command — Run SAST + SCA + secret detection all at once
+- One-line CI/CD integration — Just add `uses: baneido/shipsafe@v1` to GitHub Actions
+- AI-powered noise reduction — Reachability analysis surfaces only the vulnerabilities that actually matter
+- AI-generated fix suggestions — Suggests fix code in PR comments (Pro)
+- Japanese-native support — CLI output and reports available in Japanese
 
-## インストール
+## Installation
 
 ```bash
 # Homebrew (macOS / Linux)
@@ -49,30 +49,30 @@ cargo install shipsafe
 # Docker
 docker pull ghcr.io/baneido/shipsafe:latest
 
-# バイナリダウンロード
+# Binary download
 curl -sSL https://install.shipsafe.dev | sh
 ```
 
-## クイックスタート
+## Quick Start
 
 ```bash
-# プロジェクトディレクトリでスキャン実行
+# Run a scan in your project directory
 shipsafe scan
 
-# 特定のスキャナーのみ実行
+# Run specific scanners only
 shipsafe scan --scanners sast,sca,secrets
 
-# JSON形式で出力
+# Output in JSON format
 shipsafe scan --format json --output results.json
 
-# SARIF形式で出力（GitHub Security tab統合）
+# Output in SARIF format (GitHub Security tab integration)
 shipsafe scan --format sarif --output results.sarif
 
-# 日本語で出力
+# Output in Japanese
 shipsafe scan --lang ja
 ```
 
-### 出力例
+### Example Output
 
 ```
 🛡️ ShipSafe v0.1.0 — Pre-Deploy Security Gate
@@ -120,38 +120,38 @@ jobs:
           lang: "ja"
 ```
 
-### GitHub Actions パラメータ
+### GitHub Actions Parameters
 
-| パラメータ | デフォルト | 説明 |
-|-----------|-----------|------|
-| `scanners` | `sast,sca,secrets` | 実行するスキャナー |
-| `fail-on` | `critical` | ビルドを失敗させる重要度 |
-| `format` | `table` | 出力形式 (table, json, sarif) |
-| `lang` | `en` | 出力言語 (en, ja) |
-| `config` | `.shipsafe.yml` | 設定ファイルパス |
-| `pr-comment` | `true` | PRにコメントを投稿 |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `scanners` | `sast,sca,secrets` | Scanners to run |
+| `fail-on` | `critical` | Severity level that fails the build |
+| `format` | `table` | Output format (table, json, sarif) |
+| `lang` | `en` | Output language (en, ja) |
+| `config` | `.shipsafe.yml` | Path to configuration file |
+| `pr-comment` | `true` | Post a comment on the PR |
 
-## 機能
+## Features
 
-### 🔍 SAST（静的解析）
-- Semgrepベースの高精度パターンマッチング
-- OWASP Top 10 カバレッジ
-- AI生成コード特化ルール（Copilot / Cursor対応）
-- カスタムルール対応（YAML形式）
+### SAST (Static Analysis)
+- High-precision pattern matching powered by Semgrep
+- OWASP Top 10 coverage
+- Rules specialized for AI-generated code (Copilot / Cursor)
+- Custom rules support (YAML format)
 
-### 📦 SCA（依存関係スキャン）
-- npm / pip / cargo / gem / go mod 対応
-- CVEデータベースとのリアルタイム照合
-- 到達可能性分析（本当に使われている脆弱性のみ表示）
-- SBOM生成（CycloneDX / SPDX）
+### SCA (Dependency Scanning)
+- Supports npm, pip, cargo, gem, and go mod
+- Real-time matching against CVE databases
+- Reachability analysis (only surfaces vulnerabilities that are actually used)
+- SBOM generation (CycloneDX / SPDX)
 
-### 🔑 シークレット検出
-- 800+ パターン対応（APIキー、トークン、パスワード）
-- 日本のクラウドサービス対応（AWS Tokyo、さくらクラウド等）
-- エントロピー分析による未知のシークレット検出
-- Git履歴スキャン
+### Secret Detection
+- 800+ patterns supported (API keys, tokens, passwords)
+- Support for Japanese cloud services (AWS Tokyo, Sakura Cloud, etc.)
+- Entropy analysis to detect unknown secrets
+- Git history scanning
 
-## 設定ファイル
+## Configuration
 
 ```yaml
 # .shipsafe.yml
@@ -165,8 +165,8 @@ scanners:
       - "owasp-top-10"
       - "ai-generated-code"
     exclude:
-      - "tests/**"
-      - "vendor/**"
+      - "tests/"
+      - "vendor/"
 
   sca:
     enabled: true
@@ -186,45 +186,32 @@ ai:
   fix-suggestions: true
 ```
 
-## 料金プラン
-
-| | Free | Pro | Team | Enterprise |
-|---|---|---|---|---|
-| **月額** | ¥0 | ¥2,980 | ¥9,800 | お問合せ |
-| スキャン回数 | 100/月 | 無制限 | 無制限 | 無制限 |
-| SAST + SCA + Secrets | ✅ | ✅ | ✅ | ✅ |
-| PR コメント | ✅ | ✅ | ✅ | ✅ |
-| AI 修正提案 | — | ✅ (50回/月) | ✅ (無制限) | ✅ |
-| Docker/IaC スキャン | — | ✅ | ✅ | ✅ |
-| チームダッシュボード | — | — | ✅ | ✅ |
-| SSO/SAML | — | — | — | ✅ |
-
-## 開発
+## Development
 
 ```bash
-# ビルド
+# Build
 cargo build
 
-# テスト
+# Test
 cargo test
 
-# ローカルで実行
+# Run locally
 cargo run -- scan --path ./example-project
 
-# リリースビルド
+# Release build
 cargo build --release
 ```
 
-## ライセンス
+## License
 
-MIT License — 詳細は [LICENSE](LICENSE) を参照。
+MIT License. See [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-コントリビューションを歓迎します！[CONTRIBUTING.md](CONTRIBUTING.md) をご確認ください。
+Pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
 <p align="center">
-  Built with ❤️ by <a href="https://github.com/baneido">Canary Corporation</a>
+  Built with ❤️ by <a href="https://github.com/baneido">Baneido, Inc.</a>
 </p>
