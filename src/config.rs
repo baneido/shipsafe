@@ -45,9 +45,11 @@ impl Default for ScaConfig {
 pub struct SecretsConfig {
     pub enabled: bool,
     pub allow_patterns: Vec<String>,
+    #[serde(default)]
+    pub scan_history: bool,
 }
 impl Default for SecretsConfig {
-    fn default() -> Self { Self { enabled: true, allow_patterns: vec![] } }
+    fn default() -> Self { Self { enabled: true, allow_patterns: vec![], scan_history: false } }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
