@@ -459,20 +459,29 @@ mod tests {
 
     #[test]
     fn test_detect_package_managers() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("package-lock.json"), "{}").unwrap();
-        std::fs::write(dir.path().join("Cargo.lock"), "").unwrap();
+        let base = std::env::temp_dir();
+        let dir = base.join("detect_package_managers_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("package-lock.json"), "{}").unwrap();
+        std::fs::write(dir.join("Cargo.lock"), "").unwrap();
 
-        let detected = detect_package_managers(dir.path());
+        let detected = detect_package_managers(&dir);
         assert!(detected.contains(&"npm"));
         assert!(detected.contains(&"cargo"));
         assert!(!detected.contains(&"pip"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn test_detect_package_managers_empty() {
-        let dir = tempfile::tempdir().unwrap();
-        let detected = detect_package_managers(dir.path());
+        let base = std::env::temp_dir();
+        let dir = base.join("detect_package_managers_empty_test");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let detected = detect_package_managers(&dir);
         assert!(detected.is_empty());
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
