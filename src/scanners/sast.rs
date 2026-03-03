@@ -136,27 +136,7 @@ fn parse_semgrep_json(json_str: &str) -> Result<ScanResults> {
         }
     }
 
-    results.summary.total = results.findings.len();
-    results.summary.critical = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Critical)
-        .count();
-    results.summary.high = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::High)
-        .count();
-    results.summary.medium = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Medium)
-        .count();
-    results.summary.low = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Low)
-        .count();
+    results.recalculate_summary();
 
     Ok(results)
 }
