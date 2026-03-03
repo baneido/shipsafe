@@ -24,9 +24,11 @@ async fn run_trivy(path: &Path, _config: &Config) -> Result<ScanResults> {
 
     let output = Command::new("trivy")
         .arg("fs")
-        .arg("--format").arg("json")
+        .arg("--format")
+        .arg("json")
         .arg("--quiet")
-        .arg("--scanners").arg("vuln")
+        .arg("--scanners")
+        .arg("vuln")
         .arg(path)
         .output()?;
 
@@ -44,20 +46,42 @@ async fn run_trivy(path: &Path, _config: &Config) -> Result<ScanResults> {
                         };
 
                         let finding = Finding {
-                            id: vuln.get("VulnerabilityID").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            id: vuln
+                                .get("VulnerabilityID")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
                             scanner: "sca".to_string(),
                             severity,
-                            title: format!("{} in {}@{}",
-                                vuln.get("VulnerabilityID").and_then(|v| v.as_str()).unwrap_or(""),
+                            title: format!(
+                                "{} in {}@{}",
+                                vuln.get("VulnerabilityID")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(""),
                                 vuln.get("PkgName").and_then(|p| p.as_str()).unwrap_or(""),
-                                vuln.get("InstalledVersion").and_then(|v| v.as_str()).unwrap_or("")
+                                vuln.get("InstalledVersion")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
                             ),
-                            description: vuln.get("Title").and_then(|t| t.as_str()).unwrap_or("").to_string(),
-                            file: target.get("Target").and_then(|t| t.as_str()).unwrap_or("").to_string(),
+                            description: vuln
+                                .get("Title")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            file: target
+                                .get("Target")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("")
+                                .to_string(),
                             line: None,
                             cwe: None,
-                            cve: vuln.get("VulnerabilityID").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                            fix_suggestion: vuln.get("FixedVersion").and_then(|v| v.as_str())
+                            cve: vuln
+                                .get("VulnerabilityID")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            fix_suggestion: vuln
+                                .get("FixedVersion")
+                                .and_then(|v| v.as_str())
                                 .map(|v| format!("Upgrade to version {}", v)),
                         };
                         results.findings.push(finding);
@@ -68,10 +92,26 @@ async fn run_trivy(path: &Path, _config: &Config) -> Result<ScanResults> {
     }
 
     results.summary.total = results.findings.len();
-    results.summary.critical = results.findings.iter().filter(|f| f.severity == Severity::Critical).count();
-    results.summary.high = results.findings.iter().filter(|f| f.severity == Severity::High).count();
-    results.summary.medium = results.findings.iter().filter(|f| f.severity == Severity::Medium).count();
-    results.summary.low = results.findings.iter().filter(|f| f.severity == Severity::Low).count();
+    results.summary.critical = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Critical)
+        .count();
+    results.summary.high = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::High)
+        .count();
+    results.summary.medium = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Medium)
+        .count();
+    results.summary.low = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Low)
+        .count();
     Ok(results)
 }
 

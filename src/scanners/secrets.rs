@@ -49,22 +49,34 @@ fn classify_secret(rule_id: &str) -> &'static str {
 fn severity_from_rule_id(rule_id: &str) -> Severity {
     let id = rule_id.to_lowercase();
     // Cloud provider credentials and private keys are critical
-    if id.contains("aws") || id.contains("gcp") || id.contains("google")
-        || id.contains("azure") || id.contains("private-key") || id.contains("privatekey")
+    if id.contains("aws")
+        || id.contains("gcp")
+        || id.contains("google")
+        || id.contains("azure")
+        || id.contains("private-key")
+        || id.contains("privatekey")
     {
         Severity::Critical
     // Service tokens and API keys are high
-    } else if id.contains("github") || id.contains("gitlab") || id.contains("slack")
-        || id.contains("stripe") || id.contains("twilio") || id.contains("sendgrid")
-        || id.contains("npm") || id.contains("pypi") || id.contains("jwt")
+    } else if id.contains("github")
+        || id.contains("gitlab")
+        || id.contains("slack")
+        || id.contains("stripe")
+        || id.contains("twilio")
+        || id.contains("sendgrid")
+        || id.contains("npm")
+        || id.contains("pypi")
+        || id.contains("jwt")
     {
         Severity::High
     // Generic secrets are low
     } else if id.contains("generic") {
         Severity::Low
     // Passwords and API keys are medium
-    } else if id.contains("password") || id.contains("passwd")
-        || id.contains("api-key") || id.contains("apikey")
+    } else if id.contains("password")
+        || id.contains("passwd")
+        || id.contains("api-key")
+        || id.contains("apikey")
     {
         Severity::Medium
     // Default to high for unknown rules
@@ -101,7 +113,10 @@ fn parse_gitleaks_output(stdout: &str, allow_patterns: &[Regex]) -> Vec<Finding>
         .iter()
         .filter(|leak| !is_allowed(leak, allow_patterns))
         .map(|leak| {
-            let rule_id = leak.get("RuleID").and_then(|r| r.as_str()).unwrap_or("unknown");
+            let rule_id = leak
+                .get("RuleID")
+                .and_then(|r| r.as_str())
+                .unwrap_or("unknown");
             let category = classify_secret(rule_id);
             let severity = severity_from_rule_id(rule_id);
 
@@ -109,16 +124,28 @@ fn parse_gitleaks_output(stdout: &str, allow_patterns: &[Regex]) -> Vec<Finding>
                 id: format!("secret-{}", rule_id),
                 scanner: "secrets".to_string(),
                 severity,
-                title: format!("{} detected: {}",
+                title: format!(
+                    "{} detected: {}",
                     category,
-                    leak.get("Description").and_then(|d| d.as_str()).unwrap_or("Unknown secret")),
-                description: format!("Rule: {} | Category: {}",
-                    rule_id, category),
-                file: leak.get("File").and_then(|f| f.as_str()).unwrap_or("").to_string(),
-                line: leak.get("StartLine").and_then(|l| l.as_u64()).map(|l| l as u32),
+                    leak.get("Description")
+                        .and_then(|d| d.as_str())
+                        .unwrap_or("Unknown secret")
+                ),
+                description: format!("Rule: {} | Category: {}", rule_id, category),
+                file: leak
+                    .get("File")
+                    .and_then(|f| f.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                line: leak
+                    .get("StartLine")
+                    .and_then(|l| l.as_u64())
+                    .map(|l| l as u32),
                 cwe: Some("CWE-798".to_string()),
                 cve: None,
-                fix_suggestion: Some("Remove the secret and rotate the credential immediately.".to_string()),
+                fix_suggestion: Some(
+                    "Remove the secret and rotate the credential immediately.".to_string(),
+                ),
             }
         })
         .collect()
@@ -133,7 +160,10 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
     }
 
     // Compile allow_patterns into regexes
-    let allow_patterns: Vec<Regex> = config.scanners.secrets.allow_patterns
+    let allow_patterns: Vec<Regex> = config
+        .scanners
+        .secrets
+        .allow_patterns
         .iter()
         .filter_map(|p| match Regex::new(p) {
             Ok(re) => Some(re),
@@ -146,9 +176,12 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
 
     let mut cmd = Command::new("gitleaks");
     cmd.arg("detect")
-        .arg("--source").arg(path)
-        .arg("--report-format").arg("json")
-        .arg("--report-path").arg("/dev/stdout")
+        .arg("--source")
+        .arg(path)
+        .arg("--report-format")
+        .arg("json")
+        .arg("--report-path")
+        .arg("/dev/stdout")
         .arg("--no-banner");
 
     // Enable git history scanning
@@ -163,10 +196,26 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
 
     results.findings = parse_gitleaks_output(&stdout, &allow_patterns);
     results.summary.total = results.findings.len();
-    results.summary.critical = results.findings.iter().filter(|f| f.severity == Severity::Critical).count();
-    results.summary.high = results.findings.iter().filter(|f| f.severity == Severity::High).count();
-    results.summary.medium = results.findings.iter().filter(|f| f.severity == Severity::Medium).count();
-    results.summary.low = results.findings.iter().filter(|f| f.severity == Severity::Low).count();
+    results.summary.critical = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Critical)
+        .count();
+    results.summary.high = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::High)
+        .count();
+    results.summary.medium = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Medium)
+        .count();
+    results.summary.low = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Low)
+        .count();
 
     Ok(results)
 }
@@ -198,8 +247,14 @@ mod tests {
     #[test]
     fn test_severity_from_rule_id() {
         assert_eq!(severity_from_rule_id("aws-access-key"), Severity::Critical);
-        assert_eq!(severity_from_rule_id("gcp-service-account"), Severity::Critical);
-        assert_eq!(severity_from_rule_id("azure-storage-key"), Severity::Critical);
+        assert_eq!(
+            severity_from_rule_id("gcp-service-account"),
+            Severity::Critical
+        );
+        assert_eq!(
+            severity_from_rule_id("azure-storage-key"),
+            Severity::Critical
+        );
         assert_eq!(severity_from_rule_id("private-key"), Severity::Critical);
         assert_eq!(severity_from_rule_id("github-pat"), Severity::High);
         assert_eq!(severity_from_rule_id("slack-webhook"), Severity::High);

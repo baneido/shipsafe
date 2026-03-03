@@ -1,5 +1,5 @@
-pub mod triage;
 pub mod fix;
+pub mod triage;
 
 // AI module - integrates with Claude API for:
 // 1. Noise reduction / triage (prioritize truly exploitable findings)
