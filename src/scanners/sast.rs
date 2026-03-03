@@ -12,10 +12,7 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
     }
 
     let mut cmd = Command::new("semgrep");
-    cmd.arg("scan")
-        .arg("--json")
-        .arg("--quiet")
-        .arg(path);
+    cmd.arg("scan").arg("--json").arg("--quiet").arg(path);
 
     // Add rule configs; default to OWASP Top 10 if none specified
     let rules = &config.scanners.sast.rules;
@@ -24,9 +21,15 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
     } else {
         for rule in rules {
             match rule.as_str() {
-                "owasp-top-10" => { cmd.arg("--config").arg("p/owasp-top-ten"); }
-                "ai-generated-code" => { cmd.arg("--config").arg("p/default"); }
-                other => { cmd.arg("--config").arg(other); }
+                "owasp-top-10" => {
+                    cmd.arg("--config").arg("p/owasp-top-ten");
+                }
+                "ai-generated-code" => {
+                    cmd.arg("--config").arg("p/default");
+                }
+                other => {
+                    cmd.arg("--config").arg(other);
+                }
             }
         }
     }
@@ -84,28 +87,47 @@ fn parse_semgrep_json(json_str: &str) -> Result<ScanResults> {
     if let Some(semgrep_results) = json.get("results").and_then(|r| r.as_array()) {
         for result in semgrep_results {
             let severity = map_severity(
-                result.get("extra")
+                result
+                    .get("extra")
                     .and_then(|e| e.get("severity"))
-                    .and_then(|s| s.as_str())
+                    .and_then(|s| s.as_str()),
             );
 
             let metadata = result.get("extra").and_then(|e| e.get("metadata"));
 
             let finding = Finding {
-                id: result.get("check_id").and_then(|c| c.as_str()).unwrap_or("unknown").to_string(),
+                id: result
+                    .get("check_id")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
                 scanner: "sast".to_string(),
                 severity,
-                title: result.get("check_id").and_then(|c| c.as_str()).unwrap_or("").to_string(),
-                description: result.get("extra")
+                title: result
+                    .get("check_id")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                description: result
+                    .get("extra")
                     .and_then(|e| e.get("message"))
                     .and_then(|m| m.as_str())
                     .unwrap_or("")
                     .to_string(),
-                file: result.get("path").and_then(|p| p.as_str()).unwrap_or("").to_string(),
-                line: result.get("start").and_then(|s| s.get("line")).and_then(|l| l.as_u64()).map(|l| l as u32),
+                file: result
+                    .get("path")
+                    .and_then(|p| p.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                line: result
+                    .get("start")
+                    .and_then(|s| s.get("line"))
+                    .and_then(|l| l.as_u64())
+                    .map(|l| l as u32),
                 cwe: extract_cwe(metadata),
                 cve: None,
-                fix_suggestion: result.get("extra")
+                fix_suggestion: result
+                    .get("extra")
                     .and_then(|e| e.get("fix"))
                     .and_then(|f| f.as_str())
                     .map(|s| s.to_string()),
@@ -115,10 +137,26 @@ fn parse_semgrep_json(json_str: &str) -> Result<ScanResults> {
     }
 
     results.summary.total = results.findings.len();
-    results.summary.critical = results.findings.iter().filter(|f| f.severity == Severity::Critical).count();
-    results.summary.high = results.findings.iter().filter(|f| f.severity == Severity::High).count();
-    results.summary.medium = results.findings.iter().filter(|f| f.severity == Severity::Medium).count();
-    results.summary.low = results.findings.iter().filter(|f| f.severity == Severity::Low).count();
+    results.summary.critical = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Critical)
+        .count();
+    results.summary.high = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::High)
+        .count();
+    results.summary.medium = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Medium)
+        .count();
+    results.summary.low = results
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Low)
+        .count();
 
     Ok(results)
 }
@@ -141,7 +179,10 @@ mod tests {
         let json: serde_json::Value = serde_json::json!({
             "cwe": "CWE-89: SQL Injection"
         });
-        assert_eq!(extract_cwe(Some(&json)), Some("CWE-89: SQL Injection".to_string()));
+        assert_eq!(
+            extract_cwe(Some(&json)),
+            Some("CWE-89: SQL Injection".to_string())
+        );
     }
 
     #[test]
@@ -149,7 +190,10 @@ mod tests {
         let json: serde_json::Value = serde_json::json!({
             "cwe": ["CWE-79: XSS", "CWE-89: SQL Injection"]
         });
-        assert_eq!(extract_cwe(Some(&json)), Some("CWE-79: XSS, CWE-89: SQL Injection".to_string()));
+        assert_eq!(
+            extract_cwe(Some(&json)),
+            Some("CWE-79: XSS, CWE-89: SQL Injection".to_string())
+        );
     }
 
     #[test]
@@ -212,7 +256,7 @@ mod tests {
         assert_eq!(results.summary.medium, 1);
         assert_eq!(results.summary.low, 1);
 
-        // Check ERROR → Critical mapping
+        // Check ERROR -> Critical mapping
         let f0 = &results.findings[0];
         assert_eq!(f0.severity, Severity::Critical);
         assert_eq!(f0.id, "python.lang.security.audit.exec-detected");
@@ -220,14 +264,17 @@ mod tests {
         assert_eq!(f0.file, "app.py");
         assert_eq!(f0.line, Some(42));
         assert_eq!(f0.cwe, Some("CWE-95: Improper Neutralization".to_string()));
-        assert_eq!(f0.fix_suggestion, Some("Use ast.literal_eval() instead.".to_string()));
+        assert_eq!(
+            f0.fix_suggestion,
+            Some("Use ast.literal_eval() instead.".to_string())
+        );
 
-        // Check WARNING → Medium mapping
+        // Check WARNING -> Medium mapping
         let f1 = &results.findings[1];
         assert_eq!(f1.severity, Severity::Medium);
         assert_eq!(f1.cwe, Some("CWE-532".to_string()));
 
-        // Check INFO → Low mapping
+        // Check INFO -> Low mapping
         let f2 = &results.findings[2];
         assert_eq!(f2.severity, Severity::Low);
         assert_eq!(f2.cwe, None);
@@ -270,7 +317,11 @@ mod tests {
     #[test]
     fn test_default_config_has_owasp_rules() {
         let config = Config::default();
-        assert!(config.scanners.sast.rules.contains(&"owasp-top-10".to_string()));
+        assert!(config
+            .scanners
+            .sast
+            .rules
+            .contains(&"owasp-top-10".to_string()));
     }
 
     #[test]
