@@ -86,7 +86,8 @@ fn severity_from_rule_id(rule_id: &str) -> Severity {
 }
 
 /// Check if a finding should be excluded based on allow_patterns.
-fn is_allowed(leak: &serde_json::Value, allow_patterns: &[Regex]) -> bool {
+/// Returns `true` if the finding matches any allow_pattern and should be filtered out.
+fn is_excluded_by_allow_patterns(leak: &serde_json::Value, allow_patterns: &[Regex]) -> bool {
     if allow_patterns.is_empty() {
         return false;
     }
@@ -111,7 +112,7 @@ fn parse_gitleaks_output(stdout: &str, allow_patterns: &[Regex]) -> Vec<Finding>
 
     leaks
         .iter()
-        .filter(|leak| !is_allowed(leak, allow_patterns))
+        .filter(|leak| !is_excluded_by_allow_patterns(leak, allow_patterns))
         .map(|leak| {
             let rule_id = leak
                 .get("RuleID")
@@ -384,12 +385,12 @@ mod tests {
     }
 
     #[test]
-    fn test_is_allowed_empty_patterns() {
+    fn test_is_excluded_by_allow_patterns_empty() {
         let leak: serde_json::Value = serde_json::json!({
             "Secret": "some-secret",
             "File": "config.yml",
             "Match": "key=some-secret"
         });
-        assert!(!is_allowed(&leak, &[]));
+        assert!(!is_excluded_by_allow_patterns(&leak, &[]));
     }
 }
