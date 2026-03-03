@@ -29,6 +29,7 @@ fn detect_package_managers(path: &Path) -> Vec<&'static str> {
         .filter(|(file, _)| path.join(file).exists())
         .map(|(_, manager)| *manager)
         .collect();
+    detected.sort_unstable();
     detected.dedup();
     detected
 }
@@ -66,11 +67,11 @@ async fn run_trivy(path: &Path, _config: &Config) -> Result<ScanResults> {
         .output()?;
 
     if !output.status.success() {
-        tracing::warn!(
-            "trivy exited with status {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.stdout.is_empty() {
+            anyhow::bail!("trivy failed with status {}: {}", output.status, stderr);
+        }
+        tracing::warn!("trivy exited with status {}: {}", output.status, stderr);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -150,11 +151,11 @@ async fn run_grype(path: &Path, _config: &Config) -> Result<ScanResults> {
         .output()?;
 
     if !output.status.success() {
-        tracing::warn!(
-            "grype exited with status {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.stdout.is_empty() {
+            anyhow::bail!("grype failed with status {}: {}", output.status, stderr);
+        }
+        tracing::warn!("grype exited with status {}: {}", output.status, stderr);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
