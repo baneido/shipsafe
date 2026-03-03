@@ -24,11 +24,13 @@ fn detect_package_managers(path: &Path) -> Vec<&'static str> {
         ("packages.lock.json", "nuget"),
     ];
 
-    indicators
+    let mut detected: Vec<&str> = indicators
         .iter()
         .filter(|(file, _)| path.join(file).exists())
         .map(|(_, manager)| *manager)
-        .collect()
+        .collect();
+    detected.dedup();
+    detected
 }
 
 pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
@@ -74,30 +76,6 @@ async fn run_trivy(path: &Path, _config: &Config) -> Result<ScanResults> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let results = parse_trivy_json(&stdout);
     Ok(results)
-}
-
-fn update_summary(results: &mut ScanResults) {
-    results.summary.total = results.findings.len();
-    results.summary.critical = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Critical)
-        .count();
-    results.summary.high = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::High)
-        .count();
-    results.summary.medium = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Medium)
-        .count();
-    results.summary.low = results
-        .findings
-        .iter()
-        .filter(|f| f.severity == Severity::Low)
-        .count();
 }
 
 fn parse_trivy_json(json_str: &str) -> ScanResults {
@@ -159,7 +137,7 @@ fn parse_trivy_json(json_str: &str) -> ScanResults {
         }
     }
 
-    update_summary(&mut results);
+    results.recalculate_summary();
     results
 }
 
@@ -258,7 +236,7 @@ fn parse_grype_json(json_str: &str) -> ScanResults {
         }
     }
 
-    update_summary(&mut results);
+    results.recalculate_summary();
     results
 }
 

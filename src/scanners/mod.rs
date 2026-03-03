@@ -76,7 +76,7 @@ impl ScanResults {
         self.recalculate_summary();
     }
 
-    fn recalculate_summary(&mut self) {
+    pub(crate) fn recalculate_summary(&mut self) {
         self.summary = ScanSummary {
             total: self.findings.len(),
             critical: self
