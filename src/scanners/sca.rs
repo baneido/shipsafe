@@ -4,9 +4,10 @@ use anyhow::Result;
 use std::path::Path;
 use std::process::Command;
 
-/// Detect package managers present in the target directory.
+/// Detect package managers present in the target directory by checking for
+/// lock files and manifest files commonly scanned by trivy/grype.
 fn detect_package_managers(path: &Path) -> Vec<&'static str> {
-    let lock_files: &[(&str, &str)] = &[
+    let indicators: &[(&str, &str)] = &[
         ("package-lock.json", "npm"),
         ("yarn.lock", "yarn"),
         ("pnpm-lock.yaml", "pnpm"),
@@ -23,7 +24,7 @@ fn detect_package_managers(path: &Path) -> Vec<&'static str> {
         ("packages.lock.json", "nuget"),
     ];
 
-    lock_files
+    indicators
         .iter()
         .filter(|(file, _)| path.join(file).exists())
         .map(|(_, manager)| *manager)
