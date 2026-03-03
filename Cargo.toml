@@ -1,0 +1,45 @@
+[package]
+name = "shipsafe"
+version = "0.1.0"
+edition = "2021"
+authors = ["Canary Corporation <dev@canary-corp.jp>"]
+description = "AI-Powered Pre-Deploy Security Gate"
+license = "MIT"
+repository = "https://github.com/baneido/shipsafe"
+homepage = "https://shipsafe.dev"
+keywords = ["security", "sast", "sca", "devsecops", "ci-cd"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+anyhow = "1"
+thiserror = "1"
+colored = "2"
+indicatif = "0.17"
+walkdir = "2"
+regex = "1"
+glob = "0.3"
+reqwest = { version = "0.12", features = ["json"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+which = "6"
+tempfile = "3"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+
+[[bin]]
+name = "shipsafe"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

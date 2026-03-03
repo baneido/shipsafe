@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+*.pdb
+.env
+*.log
+shipsafe-results.*
+node_modules/
+dist/
+.DS_Store

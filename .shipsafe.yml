@@ -1,0 +1,26 @@
+version: 1
+
+scanners:
+  sast:
+    enabled: true
+    rules:
+      - "owasp-top-10"
+    exclude:
+      - "tests/**"
+      - "target/**"
+
+  sca:
+    enabled: true
+    fail_on_severity: high
+
+  secrets:
+    enabled: true
+    allow_patterns: []
+
+output:
+  format: table
+  lang: ja
+
+ai:
+  triage: false
+  fix_suggestions: false
