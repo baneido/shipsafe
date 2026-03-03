@@ -2,10 +2,10 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::path::PathBuf;
 
-mod config;
-mod scanners;
-mod reporters;
 mod ai;
+mod config;
+mod reporters;
+mod scanners;
 
 #[derive(Parser)]
 #[command(
@@ -71,9 +71,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let log_level = if cli.verbose { "debug" } else { "info" };
-    tracing_subscriber::fmt()
-        .with_env_filter(log_level)
-        .init();
+    tracing_subscriber::fmt().with_env_filter(log_level).init();
 
     match cli.command {
         Commands::Scan {

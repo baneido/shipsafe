@@ -6,4 +6,3 @@ fn test_version() {
     cmd.arg("version");
     cmd.assert().success();
 }
-
