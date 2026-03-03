@@ -69,9 +69,6 @@ fn severity_from_rule_id(rule_id: &str) -> Severity {
         || id.contains("jwt")
     {
         Severity::High
-    // Generic secrets are low
-    } else if id.contains("generic") {
-        Severity::Low
     // Passwords and API keys are medium
     } else if id.contains("password")
         || id.contains("passwd")
@@ -79,6 +76,9 @@ fn severity_from_rule_id(rule_id: &str) -> Severity {
         || id.contains("apikey")
     {
         Severity::Medium
+    // Generic secrets are low
+    } else if id.contains("generic") {
+        Severity::Low
     // Default to high for unknown rules
     } else {
         Severity::High
@@ -107,7 +107,10 @@ fn is_excluded_by_allow_patterns(leak: &serde_json::Value, allow_patterns: &[Reg
 fn parse_gitleaks_output(stdout: &str, allow_patterns: &[Regex]) -> Vec<Finding> {
     let leaks: Vec<serde_json::Value> = match serde_json::from_str(stdout) {
         Ok(v) => v,
-        Err(_) => return vec![],
+        Err(e) => {
+            tracing::warn!("Failed to parse gitleaks JSON output: {}", e);
+            return vec![];
+        }
     };
 
     leaks
@@ -208,6 +211,7 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
                 exit_code,
                 stderr.lines().next().unwrap_or("(no details)")
             );
+            return Ok(results);
         }
     }
 
@@ -261,6 +265,7 @@ mod tests {
         assert_eq!(severity_from_rule_id("jwt-token"), Severity::High);
         assert_eq!(severity_from_rule_id("password-in-url"), Severity::Medium);
         assert_eq!(severity_from_rule_id("api-key-leak"), Severity::Medium);
+        assert_eq!(severity_from_rule_id("generic-api-key"), Severity::Medium);
         assert_eq!(severity_from_rule_id("generic-secret"), Severity::Low);
         assert_eq!(severity_from_rule_id("unknown-rule"), Severity::High);
     }
@@ -296,7 +301,7 @@ mod tests {
         assert_eq!(findings[0].line, Some(10));
 
         assert_eq!(findings[1].id, "secret-generic-api-key");
-        assert_eq!(findings[1].severity, Severity::Low);
+        assert_eq!(findings[1].severity, Severity::Medium);
         assert!(findings[1].title.contains("Generic Secret"));
     }
 
