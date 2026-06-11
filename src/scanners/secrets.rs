@@ -1,9 +1,10 @@
 use crate::config::Config;
+use crate::scanners::exec;
 use crate::scanners::{Finding, ScanResults, Severity};
 use anyhow::Result;
 use regex::Regex;
 use std::path::Path;
-use std::process::Command;
+use tokio::process::Command;
 
 /// Bundled gitleaks extension config with Japanese cloud / SaaS credential
 /// patterns (Sakura Cloud, LINE, PayPay, freee, kintone). Extends the
@@ -219,7 +220,11 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
     let mut results = ScanResults::new();
 
     if which::which("gitleaks").is_err() {
-        tracing::warn!("gitleaks not found, skipping secrets scan");
+        exec::warn_user(
+            &config.lang,
+            "gitleaks not found — secrets scan skipped. Run 'shipsafe doctor' for install instructions.",
+            "gitleaks が見つかりません — シークレットスキャンをスキップしました。'shipsafe doctor' でインストール方法を確認できます。",
+        );
         return Ok(results);
     }
 
@@ -249,37 +254,51 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
             .unwrap_or(0)
     ));
 
-    let mut cmd = Command::new("gitleaks");
-    cmd.arg("detect")
-        .arg("--source")
-        .arg(path)
-        .arg("--report-format")
-        .arg("json")
-        .arg("--report-path")
-        .arg(&report_path)
-        .arg("--no-banner");
-
     // Extend the default ruleset with bundled Japanese cloud/SaaS patterns.
-    match gitleaks_config_path() {
-        Ok(config_path) => {
-            cmd.arg("--config").arg(config_path);
-        }
+    let gitleaks_config = match gitleaks_config_path() {
+        Ok(config_path) => Some(config_path),
         Err(e) => {
             tracing::warn!(
                 "failed to materialize bundled gitleaks config, using defaults: {}",
                 e
             );
+            None
         }
-    }
+    };
 
-    // Enable git history scanning
-    if config.scanners.secrets.scan_history {
-        cmd.arg("--log-opts").arg("--all");
-    } else {
-        cmd.arg("--no-git");
-    }
+    let output = exec::run_scanner(
+        "gitleaks",
+        || {
+            let mut cmd = Command::new("gitleaks");
+            cmd.arg("detect")
+                .arg("--source")
+                .arg(path)
+                .arg("--report-format")
+                .arg("json")
+                .arg("--report-path")
+                .arg(&report_path)
+                .arg("--no-banner");
 
-    let output = cmd.output()?;
+            if let Some(ref config_path) = gitleaks_config {
+                cmd.arg("--config").arg(config_path);
+            }
+
+            // Enable git history scanning
+            if config.scanners.secrets.scan_history {
+                cmd.arg("--log-opts").arg("--all");
+            } else {
+                cmd.arg("--no-git");
+            }
+            cmd
+        },
+        config.scanners.timeout_seconds,
+        &config.lang,
+    )
+    .await?;
+
+    let Some(output) = output else {
+        return Ok(results);
+    };
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !stderr.is_empty() {

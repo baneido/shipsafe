@@ -1,8 +1,9 @@
 use crate::config::Config;
+use crate::scanners::exec;
 use crate::scanners::{Finding, ScanResults, Severity};
 use anyhow::Result;
 use std::path::Path;
-use std::process::Command;
+use tokio::process::Command;
 
 /// Detect package managers present in the target directory by checking for
 /// lock files and manifest files commonly scanned by trivy/grype.
@@ -49,22 +50,38 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
         tracing::info!("trivy not found, falling back to grype");
         results = run_grype(path, config).await?;
     } else {
-        tracing::warn!("Neither trivy nor grype found, skipping SCA scan");
+        exec::warn_user(
+            &config.lang,
+            "neither trivy nor grype found — SCA scan skipped. Run 'shipsafe doctor' for install instructions.",
+            "trivy / grype が見つかりません — SCA スキャンをスキップしました。'shipsafe doctor' でインストール方法を確認できます。",
+        );
     }
 
     Ok(results)
 }
 
-async fn run_trivy(path: &Path, _config: &Config) -> Result<ScanResults> {
-    let output = Command::new("trivy")
-        .arg("fs")
-        .arg("--format")
-        .arg("json")
-        .arg("--quiet")
-        .arg("--scanners")
-        .arg("vuln")
-        .arg(path)
-        .output()?;
+async fn run_trivy(path: &Path, config: &Config) -> Result<ScanResults> {
+    let output = exec::run_scanner(
+        "trivy",
+        || {
+            let mut cmd = Command::new("trivy");
+            cmd.arg("fs")
+                .arg("--format")
+                .arg("json")
+                .arg("--quiet")
+                .arg("--scanners")
+                .arg("vuln")
+                .arg(path);
+            cmd
+        },
+        config.scanners.timeout_seconds,
+        &config.lang,
+    )
+    .await?;
+
+    let Some(output) = output else {
+        return Ok(ScanResults::new());
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -142,13 +159,25 @@ fn parse_trivy_json(json_str: &str) -> ScanResults {
     results
 }
 
-async fn run_grype(path: &Path, _config: &Config) -> Result<ScanResults> {
-    let output = Command::new("grype")
-        .arg(format!("dir:{}", path.display()))
-        .arg("-o")
-        .arg("json")
-        .arg("--quiet")
-        .output()?;
+async fn run_grype(path: &Path, config: &Config) -> Result<ScanResults> {
+    let output = exec::run_scanner(
+        "grype",
+        || {
+            let mut cmd = Command::new("grype");
+            cmd.arg(format!("dir:{}", path.display()))
+                .arg("-o")
+                .arg("json")
+                .arg("--quiet");
+            cmd
+        },
+        config.scanners.timeout_seconds,
+        &config.lang,
+    )
+    .await?;
+
+    let Some(output) = output else {
+        return Ok(ScanResults::new());
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
