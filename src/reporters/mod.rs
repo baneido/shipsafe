@@ -24,7 +24,11 @@ pub fn report(
 
     if let Some(path) = output {
         std::fs::write(path, &content)?;
-        println!("Results written to {}", path.display());
+        if config.lang == "ja" {
+            println!("結果を {} に書き出しました", path.display());
+        } else {
+            println!("Results written to {}", path.display());
+        }
     } else {
         println!("{}", content);
     }

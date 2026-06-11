@@ -2,7 +2,8 @@ use crate::config::Config;
 use crate::scanners::{ScanResults, Severity};
 use colored::Colorize;
 
-pub fn render(results: &ScanResults, _config: &Config) {
+pub fn render(results: &ScanResults, config: &Config) {
+    let ja = config.lang == "ja";
     println!();
 
     for finding in &results.findings {
@@ -23,9 +24,11 @@ pub fn render(results: &ScanResults, _config: &Config) {
         println!("{} {}  {}", icon, severity_str, finding.title.bold());
 
         if let Some(line) = finding.line {
-            println!("   {} {}:{}", "at".dimmed(), finding.file, line);
+            let label = if ja { "場所:" } else { "at" };
+            println!("   {} {}:{}", label.dimmed(), finding.file, line);
         } else if !finding.file.is_empty() {
-            println!("   {} {}", "in".dimmed(), finding.file);
+            let label = if ja { "場所:" } else { "in" };
+            println!("   {} {}", label.dimmed(), finding.file);
         }
 
         if !finding.description.is_empty() {
@@ -41,7 +44,8 @@ pub fn render(results: &ScanResults, _config: &Config) {
         println!();
 
         if let Some(ref fix) = finding.fix_suggestion {
-            println!("   {} {}", "Fix:".green().bold(), fix);
+            let label = if ja { "修正案:" } else { "Fix:" };
+            println!("   {} {}", label.green().bold(), fix);
         }
 
         println!();
@@ -49,13 +53,24 @@ pub fn render(results: &ScanResults, _config: &Config) {
 
     // Summary
     println!("{}", "=".repeat(52));
-    println!(
-        "Summary: {} findings | {} critical | {} high | {} medium | {} low",
-        results.summary.total,
-        results.summary.critical,
-        results.summary.high,
-        results.summary.medium,
-        results.summary.low,
-    );
+    if ja {
+        println!(
+            "集計: 検出 {} 件 | critical {} | high {} | medium {} | low {}",
+            results.summary.total,
+            results.summary.critical,
+            results.summary.high,
+            results.summary.medium,
+            results.summary.low,
+        );
+    } else {
+        println!(
+            "Summary: {} findings | {} critical | {} high | {} medium | {} low",
+            results.summary.total,
+            results.summary.critical,
+            results.summary.high,
+            results.summary.medium,
+            results.summary.low,
+        );
+    }
     println!();
 }

@@ -19,15 +19,15 @@ struct Cli {
     command: Commands,
 
     /// 設定ファイルのパス
-    #[arg(short, long, default_value = ".shipsafe.yml")]
+    #[arg(short, long, global = true, default_value = ".shipsafe.yml")]
     config: PathBuf,
 
     /// 出力言語 (en, ja)
-    #[arg(long, default_value = "en")]
+    #[arg(long, global = true, default_value = "en")]
     lang: String,
 
     /// 詳細ログを出力
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     verbose: bool,
 }
 
@@ -90,7 +90,7 @@ async fn main() -> anyhow::Result<()> {
 
             reporters::report(&results, &format, output.as_deref(), &config)?;
 
-            let exit_code = results.max_severity_exit_code(&fail_on);
+            let exit_code = results.max_severity_exit_code(&fail_on, &config);
             if exit_code > 0 {
                 std::process::exit(exit_code);
             }
