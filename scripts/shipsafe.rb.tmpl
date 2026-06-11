@@ -1,0 +1,30 @@
+# Template for the Homebrew formula published to baneido/homebrew-tap.
+# Placeholders ({{VERSION}}, {{URL}}, {{SHA256}}) are filled by the release
+# workflow's homebrew job.
+class Shipsafe < Formula
+  desc "AI-Powered Pre-Deploy Security Gate - SAST, SCA, and secrets scanning"
+  homepage "https://github.com/baneido/shipsafe"
+  url "{{URL}}"
+  sha256 "{{SHA256}}"
+  version "{{VERSION}}"
+  license "MIT"
+
+  depends_on "rust" => :build
+
+  def install
+    system "cargo", "install", *std_cargo_args
+  end
+
+  def caveats
+    <<~EOS
+      ShipSafe orchestrates external scanners. Install them with:
+        brew install semgrep trivy gitleaks
+      Verify with:
+        shipsafe doctor
+    EOS
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/shipsafe version")
+  end
+end

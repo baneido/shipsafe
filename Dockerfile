@@ -1,16 +1,38 @@
-FROM rust:1.75-slim AS builder
+# --- Build stage -----------------------------------------------------------
+FROM rust:1-slim AS builder
 WORKDIR /app
-COPY . .
-RUN cargo build --release
 
+# Cache the dependency graph: build a dummy main against the real manifests
+# so source edits don't invalidate the dependency layer.
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir -p src \
+    && echo 'fn main() {}' > src/main.rs \
+    && cargo build --release \
+    && rm -rf src
+
+COPY . .
+RUN touch src/main.rs && cargo build --release && strip target/release/shipsafe
+
+# --- Runtime stage ----------------------------------------------------------
 FROM debian:bookworm-slim
+
+LABEL org.opencontainers.image.title="ShipSafe" \
+      org.opencontainers.image.description="AI-Powered Pre-Deploy Security Gate" \
+      org.opencontainers.image.source="https://github.com/baneido/shipsafe" \
+      org.opencontainers.image.licenses="MIT"
+
+ARG TRIVY_VERSION=v0.58.1
+ARG GITLEAKS_VERSION=8.30.1
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip ca-certificates curl git \
-    && pip3 install semgrep --break-system-packages \
-    && curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin \
-    && curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-amd64 -o /usr/local/bin/gitleaks \
-    && chmod +x /usr/local/bin/gitleaks \
-    && rm -rf /var/lib/apt/lists/*
+    && pip3 install --no-cache-dir --break-system-packages semgrep \
+    && curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+       | sh -s -- -b /usr/local/bin ${TRIVY_VERSION} \
+    && curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+       | tar -xz -C /usr/local/bin gitleaks \
+    && apt-get purge -y --auto-remove curl \
+    && rm -rf /var/lib/apt/lists/* /root/.cache
 
 COPY --from=builder /app/target/release/shipsafe /usr/local/bin/shipsafe
 
