@@ -55,9 +55,14 @@ fn ai_generated_code_rules_path() -> std::io::Result<std::path::PathBuf> {
         STAGING_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::write(&staging, AI_GENERATED_CODE_RULES)?;
-    std::fs::rename(&staging, &path)?;
-    Ok(path)
-}
+    match std::fs::rename(&staging, &path) {
+        Ok(()) => Ok(path),
+        Err(e) if path.is_file() => {
+            let _ = std::fs::remove_file(&staging);
+            Ok(path)
+        }
+        Err(e) => Err(e),
+    }
 
 /// Build semgrep rule config and exclude arguments.
 fn build_semgrep_args(cmd: &mut Command, config: &Config) {
