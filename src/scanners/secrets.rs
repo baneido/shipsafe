@@ -178,6 +178,17 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
         })
         .collect();
 
+    // Write the report to a temp file: /dev/stdout is not writable in some
+    // sandboxed/CI environments, and a real file works everywhere.
+    let report_path = std::env::temp_dir().join(format!(
+        "shipsafe-gitleaks-{}-{}.json",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+
     let mut cmd = Command::new("gitleaks");
     cmd.arg("detect")
         .arg("--source")
@@ -185,7 +196,7 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
         .arg("--report-format")
         .arg("json")
         .arg("--report-path")
-        .arg("/dev/stdout")
+        .arg(&report_path)
         .arg("--no-banner");
 
     // Enable git history scanning
@@ -211,13 +222,18 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
                 exit_code,
                 stderr.lines().next().unwrap_or("(no details)")
             );
+            let _ = std::fs::remove_file(&report_path);
             return Ok(results);
         }
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report = std::fs::read_to_string(&report_path).unwrap_or_else(|e| {
+        tracing::warn!("failed to read gitleaks report: {}", e);
+        String::from("[]")
+    });
+    let _ = std::fs::remove_file(&report_path);
 
-    results.findings = parse_gitleaks_output(&stdout, &allow_patterns);
+    results.findings = parse_gitleaks_output(&report, &allow_patterns);
     results.recalculate_summary();
 
     Ok(results)

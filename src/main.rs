@@ -90,21 +90,61 @@ async fn main() -> anyhow::Result<()> {
 
             reporters::report(&results, &format, output.as_deref(), &config)?;
 
-            let exit_code = results.max_severity_exit_code(&fail_on, &config);
-            if exit_code > 0 {
-                std::process::exit(exit_code);
+            if results.max_severity_exit_code(&fail_on, &config) != 0 {
+                let failing = results.failing_findings(&fail_on, &config);
+                // Surface the failure reason so CI logs explain why the build
+                // failed, not just that it failed.
+                if config.lang == "ja" {
+                    eprintln!(
+                        "{} ビルド失敗: 重要度しきい値 (--fail-on {}) 以上の検出が {} 件あります",
+                        "✘".red().bold(),
+                        fail_on,
+                        failing.len()
+                    );
+                } else {
+                    eprintln!(
+                        "{} Build failed: {} finding(s) at or above the '--fail-on {}' severity threshold",
+                        "✘".red().bold(),
+                        failing.len(),
+                        fail_on
+                    );
+                }
+                for f in failing.iter().take(10) {
+                    let loc = match f.line {
+                        Some(line) => format!("{}:{}", f.file, line),
+                        None => f.file.clone(),
+                    };
+                    eprintln!(
+                        "    [{}] {} ({})",
+                        f.severity.label(&config.lang),
+                        f.title,
+                        loc
+                    );
+                }
+                if failing.len() > 10 {
+                    if config.lang == "ja" {
+                        eprintln!("    ... ほか {} 件", failing.len() - 10);
+                    } else {
+                        eprintln!("    ... and {} more", failing.len() - 10);
+                    }
+                }
+                std::process::exit(1);
             }
         }
 
         Commands::Init => {
             config::init_config()?;
-            println!("{} .shipsafe.yml を作成しました", "✔".green().bold());
+            if cli.lang == "ja" {
+                println!("{} .shipsafe.yml を作成しました", "✔".green().bold());
+            } else {
+                println!("{} Created .shipsafe.yml", "✔".green().bold());
+            }
         }
 
         Commands::Doctor => {
             println!("{}", "ShipSafe Doctor".bold());
             println!();
-            scanners::check_dependencies();
+            scanners::check_dependencies(&cli.lang);
         }
 
         Commands::Version => {

@@ -7,11 +7,12 @@ pub fn render(results: &ScanResults, config: &Config) {
     println!();
 
     for finding in &results.findings {
+        let label = finding.severity.label(&config.lang);
         let severity_str = match finding.severity {
-            Severity::Critical => "CRITICAL".red().bold().to_string(),
-            Severity::High => "HIGH".yellow().bold().to_string(),
-            Severity::Medium => "MEDIUM".blue().bold().to_string(),
-            Severity::Low => "LOW".dimmed().to_string(),
+            Severity::Critical => label.red().bold().to_string(),
+            Severity::High => label.yellow().bold().to_string(),
+            Severity::Medium => label.blue().bold().to_string(),
+            Severity::Low => label.dimmed().to_string(),
         };
 
         let icon = match finding.severity {
@@ -55,7 +56,7 @@ pub fn render(results: &ScanResults, config: &Config) {
     println!("{}", "=".repeat(52));
     if ja {
         println!(
-            "集計: 検出 {} 件 | critical {} | high {} | medium {} | low {}",
+            "集計: 検出 {} 件 | 重大 {} | 高 {} | 中 {} | 低 {}",
             results.summary.total,
             results.summary.critical,
             results.summary.high,
