@@ -181,6 +181,15 @@ ai:
     }
 
     #[test]
+    fn test_missing_version_defaults_to_1() {
+        // Container-level #[serde(default)] fills missing fields from the
+        // struct's Default impl, so a partial config gets version: 1.
+        let config: Config = serde_yaml::from_str("scanners: {}").unwrap();
+        assert_eq!(config.version, 1);
+        assert!(config.scanners.sast.enabled);
+    }
+
+    #[test]
     fn test_default_config_serializes_kebab_case() {
         let yaml = serde_yaml::to_string(&Config::default()).unwrap();
         assert!(yaml.contains("fail-on-severity"));

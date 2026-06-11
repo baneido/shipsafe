@@ -55,14 +55,17 @@ fn ai_generated_code_rules_path() -> std::io::Result<std::path::PathBuf> {
         STAGING_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::write(&staging, AI_GENERATED_CODE_RULES)?;
-    match std::fs::rename(&staging, &path) {
-        Ok(()) => Ok(path),
-        Err(e) if path.is_file() => {
-            let _ = std::fs::remove_file(&staging);
-            Ok(path)
+    if let Err(e) = std::fs::rename(&staging, &path) {
+        // The rename can fail if the destination is locked (e.g. on Windows
+        // while another process reads it). The content is identical for a
+        // given version, so an existing destination is safe to reuse.
+        let _ = std::fs::remove_file(&staging);
+        if !path.is_file() {
+            return Err(e);
         }
-        Err(e) => Err(e),
     }
+    Ok(path)
+}
 
 /// Build semgrep rule config and exclude arguments.
 fn build_semgrep_args(cmd: &mut Command, config: &Config) {

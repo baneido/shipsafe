@@ -85,9 +85,9 @@ runs:
       shell: bash
       run: |
         EXIT_CODE="${{ steps.scan.outputs.exit-code }}"
-        if [[ "$EXIT_CODE" == "1" ]]; then
-          echo "::error::ShipSafe found findings at or above '${{ inputs.fail-on }}' severity (exit code $EXIT_CODE)"
+        if [ "$EXIT_CODE" = "1" ]; then
+          echo "::error::ShipSafe found findings at or above '${{ inputs.fail-on }}' severity"
         else
-          echo "::error::ShipSafe scan failed with exit code $EXIT_CODE"
+          echo "::error::ShipSafe scan failed to run (exit code $EXIT_CODE)"
         fi
         exit 1
