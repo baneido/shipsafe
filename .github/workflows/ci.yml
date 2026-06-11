@@ -28,6 +28,18 @@ jobs:
       - name: Format check
         run: cargo fmt -- --check
 
+  rule-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install semgrep
+        run: pip install semgrep
+      - name: Test bundled semgrep rules
+        run: semgrep --test rules/sast/
+
   build:
     needs: test
     strategy:

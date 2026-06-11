@@ -36,35 +36,51 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
 
 /// Bundled semgrep rules for AI-generated code patterns, embedded at build
 /// time so the distributed binary does not depend on the repo layout.
-const AI_GENERATED_CODE_RULES: &str = include_str!("../../rules/sast/ai-generated-code.yml");
+const AI_GENERATED_CODE_RULES: &[(&str, &str)] = &[
+    ("python.yml", include_str!("../../rules/sast/python.yml")),
+    (
+        "javascript.yml",
+        include_str!("../../rules/sast/javascript.yml"),
+    ),
+    ("rust.yml", include_str!("../../rules/sast/rust.yml")),
+    ("go.yml", include_str!("../../rules/sast/go.yml")),
+];
 
-/// Materialize the bundled AI-generated-code rules to a temp file so semgrep
-/// can consume them via --config. Writes to a unique staging file first and
-/// renames into place so concurrent invocations never observe a partial file.
+/// Materialize the bundled AI-generated-code rules to a temp directory so
+/// semgrep can consume them via --config. Each file is written to a unique
+/// staging path first and renamed into place so concurrent invocations never
+/// observe a partial file.
 fn ai_generated_code_rules_path() -> std::io::Result<std::path::PathBuf> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static STAGING_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-    let path = std::env::temp_dir().join(format!(
-        "shipsafe-{}-ai-generated-code.yml",
+    let dir = std::env::temp_dir().join(format!(
+        "shipsafe-{}-ai-generated-rules",
         env!("CARGO_PKG_VERSION")
     ));
-    let staging = path.with_extension(format!(
-        "yml.{}.{}",
-        std::process::id(),
-        STAGING_COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::write(&staging, AI_GENERATED_CODE_RULES)?;
-    if let Err(e) = std::fs::rename(&staging, &path) {
-        // The rename can fail if the destination is locked (e.g. on Windows
-        // while another process reads it). The content is identical for a
-        // given version, so an existing destination is safe to reuse.
-        let _ = std::fs::remove_file(&staging);
-        if !path.is_file() {
-            return Err(e);
+    std::fs::create_dir_all(&dir)?;
+
+    for (name, content) in AI_GENERATED_CODE_RULES {
+        let path = dir.join(name);
+        let staging = dir.join(format!(
+            "{}.{}.{}.staging",
+            name,
+            std::process::id(),
+            STAGING_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::write(&staging, content)?;
+        if let Err(e) = std::fs::rename(&staging, &path) {
+            // The rename can fail if the destination is locked (e.g. on
+            // Windows while another process reads it). The content is
+            // identical for a given version, so an existing destination is
+            // safe to reuse.
+            let _ = std::fs::remove_file(&staging);
+            if !path.is_file() {
+                return Err(e);
+            }
         }
     }
-    Ok(path)
+    Ok(dir)
 }
 
 /// Build semgrep rule config and exclude arguments.
@@ -389,18 +405,27 @@ mod tests {
 
         let args = get_args(&cmd);
         assert!(args.contains(&"p/owasp-top-ten".to_string()));
-        assert!(args
-            .iter()
-            .any(|a| a.ends_with("ai-generated-code.yml") && !a.contains("p/default")));
+        assert!(args.iter().any(|a| a.ends_with("ai-generated-rules")));
         assert!(args.contains(&"--exclude".to_string()));
         assert!(args.contains(&"vendor".to_string()));
     }
 
     #[test]
     fn test_ai_generated_code_rules_materialized() {
-        let path = ai_generated_code_rules_path().unwrap();
-        let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("ai-hardcoded-credentials"));
-        assert!(content.contains("ai-sql-injection"));
+        let dir = ai_generated_code_rules_path().unwrap();
+        assert!(dir.is_dir());
+
+        let python = std::fs::read_to_string(dir.join("python.yml")).unwrap();
+        assert!(python.contains("ai-py-hardcoded-credentials"));
+        assert!(python.contains("ai-py-sql-injection-concat"));
+
+        let js = std::fs::read_to_string(dir.join("javascript.yml")).unwrap();
+        assert!(js.contains("ai-js-dangerously-set-inner-html"));
+
+        let rust = std::fs::read_to_string(dir.join("rust.yml")).unwrap();
+        assert!(rust.contains("ai-rust-mem-transmute"));
+
+        let go = std::fs::read_to_string(dir.join("go.yml")).unwrap();
+        assert!(go.contains("ai-go-empty-error-check"));
     }
 }

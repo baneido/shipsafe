@@ -1,0 +1,140 @@
+# AI-generated code detection rules — JavaScript / TypeScript.
+# Typical vulnerable patterns from AI assistants in React/Next.js/Express code.
+rules:
+  - id: ai-js-dangerously-set-inner-html
+    patterns:
+      - pattern: |
+          <$EL dangerouslySetInnerHTML={{__html: $X}} />
+      - pattern-not: |
+          <$EL dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(...)}} />
+      - pattern-not: |
+          <$EL dangerouslySetInnerHTML={{__html: "..."}} />
+    message: >
+      dangerouslySetInnerHTML with unsanitized content is an XSS risk that AI
+      assistants frequently generate. Sanitize with DOMPurify or render as
+      text.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: [ai-generated]
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+      confidence: HIGH
+
+  - id: ai-js-inner-html-assignment
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = `...${$X}...`
+          - pattern: $EL.innerHTML = "..." + $X
+          - pattern: $EL.innerHTML = $X + "..."
+          - pattern: $EL.outerHTML = `...${$X}...`
+          - pattern: $EL.outerHTML = "..." + $X
+      - pattern-not: $EL.innerHTML = DOMPurify.sanitize(...)
+    message: >
+      Assigning interpolated data to innerHTML/outerHTML is an XSS sink.
+      Use textContent, or sanitize the HTML with DOMPurify first.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: [ai-generated]
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+      confidence: HIGH
+
+  - id: ai-js-document-write
+    pattern-either:
+      - pattern: document.write(...)
+      - pattern: document.writeln(...)
+    message: >
+      document.write() is an XSS sink and blocks parsing. Build DOM nodes or
+      set textContent instead.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      subcategory: [ai-generated]
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+      confidence: MEDIUM
+
+  - id: ai-express-sensitive-route-no-middleware
+    patterns:
+      - pattern-either:
+          - pattern: $APP.post($PATH, ($REQ, $RES) => { ... })
+          - pattern: $APP.put($PATH, ($REQ, $RES) => { ... })
+          - pattern: $APP.delete($PATH, ($REQ, $RES) => { ... })
+          - pattern: $APP.post($PATH, async ($REQ, $RES) => { ... })
+          - pattern: $APP.put($PATH, async ($REQ, $RES) => { ... })
+          - pattern: $APP.delete($PATH, async ($REQ, $RES) => { ... })
+      - metavariable-regex:
+          metavariable: $PATH
+          regex: .*(admin|delete|settings|internal|user).*
+    message: >
+      State-changing Express route on a sensitive path registered without any
+      middleware (authentication / CSRF protection). AI-generated route
+      handlers often skip auth middleware. Add an auth middleware argument
+      before the handler.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      subcategory: [ai-generated]
+      cwe: "CWE-306: Missing Authentication for Critical Function"
+      confidence: MEDIUM
+
+  - id: ai-js-cors-wildcard-credentials
+    patterns:
+      - pattern-either:
+          - pattern: |
+              cors({origin: "*", credentials: true})
+          - pattern: |
+              cors({credentials: true, origin: "*"})
+          - pattern: |
+              $RES.setHeader("Access-Control-Allow-Origin", "*");
+              ...
+              $RES.setHeader("Access-Control-Allow-Credentials", "true");
+    message: >
+      Wildcard CORS origin combined with credentials lets any site make
+      authenticated requests. Use an allowlist of origins.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: [ai-generated]
+      cwe: "CWE-942: Permissive Cross-domain Policy with Untrusted Domains"
+      confidence: HIGH
+
+  - id: ai-js-insecure-cookie-defaults
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $RES.cookie($NAME, $VAL, {httpOnly: false, ...})
+          - pattern: |
+              $RES.cookie($NAME, $VAL, {secure: false, ...})
+    message: >
+      Cookie set with httpOnly/secure explicitly disabled. Session and auth
+      cookies should set httpOnly: true, secure: true and an appropriate
+      sameSite value.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      subcategory: [ai-generated]
+      cwe: "CWE-1004: Sensitive Cookie Without 'HttpOnly' Flag"
+      confidence: HIGH
+
+  - id: ai-js-eval-interpolation
+    pattern-either:
+      - pattern: eval(`...${$X}...`)
+      - pattern: eval("..." + $X)
+      - pattern: new Function(`...${$X}...`)
+      - pattern: new Function("..." + $X)
+    message: >
+      eval()/new Function() on interpolated data allows arbitrary code
+      execution. Parse the input explicitly instead.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: [ai-generated]
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+      confidence: HIGH
