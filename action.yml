@@ -66,8 +66,8 @@ runs:
         # Prefer the bundled install script (downloads a release binary);
         # fall back to building from source if no release asset matches.
         if ! bash "${GITHUB_ACTION_PATH}/scripts/install.sh" --version "${SHIPSAFE_VERSION}" --bin-dir /usr/local/bin; then
-          echo "::warning::release binary unavailable, building shipsafe from source"
-          cargo install --git https://github.com/baneido/shipsafe --locked
+          echo "::warning::release binary unavailable, building shipsafe from the action source"
+          cargo install --path "${GITHUB_ACTION_PATH}" --locked
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
         fi
         shipsafe version || "$HOME/.cargo/bin/shipsafe" version
