@@ -1,21 +1,37 @@
 use crate::config::Config;
+use crate::scanners::exec;
 use crate::scanners::{Finding, ScanResults, Severity};
 use anyhow::Result;
 use std::path::Path;
-use std::process::Command;
+use tokio::process::Command;
 
 pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
     // Check if semgrep is available
     if which::which("semgrep").is_err() {
-        tracing::warn!("semgrep not found, skipping SAST scan");
+        exec::warn_user(
+            &config.lang,
+            "semgrep not found — SAST scan skipped. Run 'shipsafe doctor' for install instructions.",
+            "semgrep が見つかりません — SAST スキャンをスキップしました。'shipsafe doctor' でインストール方法を確認できます。",
+        );
         return Ok(ScanResults::new());
     }
 
-    let mut cmd = Command::new("semgrep");
-    cmd.arg("scan").arg("--json").arg("--quiet").arg(path);
-    build_semgrep_args(&mut cmd, config, path);
+    let output = exec::run_scanner(
+        "semgrep",
+        || {
+            let mut cmd = Command::new("semgrep");
+            cmd.arg("scan").arg("--json").arg("--quiet").arg(path);
+            build_semgrep_args(&mut cmd, config, path);
+            cmd
+        },
+        config.scanners.timeout_seconds,
+        &config.lang,
+    )
+    .await?;
 
-    let output = cmd.output()?;
+    let Some(output) = output else {
+        return Ok(ScanResults::new());
+    };
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !stderr.is_empty() {
@@ -23,10 +39,11 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
     }
 
     if !output.status.success() {
-        tracing::warn!(
-            "semgrep exited with status {}: {}",
-            output.status,
-            stderr.lines().next().unwrap_or("(no details)")
+        let first = stderr.lines().next().unwrap_or("(no details)");
+        exec::warn_user(
+            &config.lang,
+            &format!("semgrep exited with {}: {}", output.status, first),
+            &format!("semgrep が異常終了しました ({}): {}", output.status, first),
         );
     }
 
@@ -425,7 +442,8 @@ mod tests {
 
     /// Helper to extract args from a Command for testing.
     fn get_args(cmd: &Command) -> Vec<String> {
-        cmd.get_args()
+        cmd.as_std()
+            .get_args()
             .map(|a| a.to_string_lossy().to_string())
             .collect()
     }

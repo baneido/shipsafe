@@ -28,12 +28,25 @@ impl Default for Config {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", default)]
 pub struct ScannersConfig {
     pub sast: SastConfig,
     pub sca: ScaConfig,
     pub secrets: SecretsConfig,
+    /// Per-scanner timeout in seconds; a scanner exceeding it is skipped.
+    #[serde(alias = "timeout_seconds")]
+    pub timeout_seconds: u64,
+}
+impl Default for ScannersConfig {
+    fn default() -> Self {
+        Self {
+            sast: SastConfig::default(),
+            sca: ScaConfig::default(),
+            secrets: SecretsConfig::default(),
+            timeout_seconds: 300,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,7 +156,16 @@ pub fn init_config() -> Result<()> {
 /// Known config keys per section, accepting both kebab-case and snake_case.
 const KNOWN_KEYS: &[(&str, &[&str])] = &[
     ("", &["version", "scanners", "output", "ai", "exclude"]),
-    ("scanners", &["sast", "sca", "secrets"]),
+    (
+        "scanners",
+        &[
+            "sast",
+            "sca",
+            "secrets",
+            "timeout-seconds",
+            "timeout_seconds",
+        ],
+    ),
     (
         "scanners.sast",
         &[
@@ -269,6 +291,10 @@ pub fn validate_file(path: &Path) -> Result<Vec<String>> {
             config.scanners.sca.fail_on_severity,
             SEVERITIES.join(", ")
         ));
+    }
+
+    if config.scanners.timeout_seconds == 0 {
+        errors.push("scanners.timeout-seconds: must be greater than 0".to_string());
     }
 
     for pattern in &config.scanners.secrets.allow_patterns {
