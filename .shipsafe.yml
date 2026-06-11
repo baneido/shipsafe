@@ -11,11 +11,11 @@ scanners:
 
   sca:
     enabled: true
-    fail_on_severity: high
+    fail-on-severity: high
 
   secrets:
     enabled: true
-    allow_patterns: []
+    allow-patterns: []
 
 output:
   format: table
@@ -23,4 +23,4 @@ output:
 
 ai:
   triage: false
-  fix_suggestions: false
+  fix-suggestions: false

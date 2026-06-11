@@ -34,6 +34,31 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
     parse_semgrep_json(&stdout)
 }
 
+/// Bundled semgrep rules for AI-generated code patterns, embedded at build
+/// time so the distributed binary does not depend on the repo layout.
+const AI_GENERATED_CODE_RULES: &str = include_str!("../../rules/sast/ai-generated-code.yml");
+
+/// Materialize the bundled AI-generated-code rules to a temp file so semgrep
+/// can consume them via --config. Writes to a unique staging file first and
+/// renames into place so concurrent invocations never observe a partial file.
+fn ai_generated_code_rules_path() -> std::io::Result<std::path::PathBuf> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static STAGING_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    let path = std::env::temp_dir().join(format!(
+        "shipsafe-{}-ai-generated-code.yml",
+        env!("CARGO_PKG_VERSION")
+    ));
+    let staging = path.with_extension(format!(
+        "yml.{}.{}",
+        std::process::id(),
+        STAGING_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&staging, AI_GENERATED_CODE_RULES)?;
+    std::fs::rename(&staging, &path)?;
+    Ok(path)
+}
+
 /// Build semgrep rule config and exclude arguments.
 fn build_semgrep_args(cmd: &mut Command, config: &Config) {
     // Add rule configs; default to OWASP Top 10 if none specified
@@ -46,9 +71,17 @@ fn build_semgrep_args(cmd: &mut Command, config: &Config) {
                 "owasp-top-10" => {
                     cmd.arg("--config").arg("p/owasp-top-ten");
                 }
-                "ai-generated-code" => {
-                    cmd.arg("--config").arg("p/default");
-                }
+                "ai-generated-code" => match ai_generated_code_rules_path() {
+                    Ok(path) => {
+                        cmd.arg("--config").arg(path);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "failed to materialize bundled ai-generated-code rules, skipping: {}",
+                            e
+                        );
+                    }
+                },
                 other => {
                     cmd.arg("--config").arg(other);
                 }
@@ -348,8 +381,18 @@ mod tests {
 
         let args = get_args(&cmd);
         assert!(args.contains(&"p/owasp-top-ten".to_string()));
-        assert!(args.contains(&"p/default".to_string()));
+        assert!(args
+            .iter()
+            .any(|a| a.ends_with("ai-generated-code.yml") && !a.contains("p/default")));
         assert!(args.contains(&"--exclude".to_string()));
         assert!(args.contains(&"vendor".to_string()));
+    }
+
+    #[test]
+    fn test_ai_generated_code_rules_materialized() {
+        let path = ai_generated_code_rules_path().unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("ai-hardcoded-credentials"));
+        assert!(content.contains("ai-sql-injection"));
     }
 }

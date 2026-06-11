@@ -60,15 +60,18 @@ runs:
         curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-amd64 -o /usr/local/bin/gitleaks && chmod +x /usr/local/bin/gitleaks
 
     - name: Run ShipSafe Scan
+      id: scan
       shell: bash
       run: |
+        set +e
         shipsafe scan \
           --scanners "${{ inputs.scanners }}" \
           --fail-on "${{ inputs.fail-on }}" \
           --format "${{ inputs.format }}" \
           --lang "${{ inputs.lang }}" \
           --config "${{ inputs.config }}" \
-          --output shipsafe-results.sarif || true
+          --output shipsafe-results.sarif
+        echo "exit-code=$?" >> "$GITHUB_OUTPUT"
 
     - name: Upload SARIF to GitHub Security
       if: inputs.format == 'sarif'
@@ -76,3 +79,10 @@ runs:
       with:
         sarif_file: shipsafe-results.sarif
       continue-on-error: true
+
+    - name: Enforce fail-on threshold
+      if: steps.scan.outputs.exit-code != '0'
+      shell: bash
+      run: |
+        echo "::error::ShipSafe found findings at or above '${{ inputs.fail-on }}' severity (exit code ${{ steps.scan.outputs.exit-code }})"
+        exit 1
