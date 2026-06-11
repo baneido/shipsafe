@@ -48,6 +48,27 @@ impl std::fmt::Display for Severity {
     }
 }
 
+impl Severity {
+    /// Localized severity label. Japanese: 重大/高/中/低.
+    pub fn label(&self, lang: &str) -> &'static str {
+        if lang == "ja" {
+            match self {
+                Severity::Critical => "重大",
+                Severity::High => "高",
+                Severity::Medium => "中",
+                Severity::Low => "低",
+            }
+        } else {
+            match self {
+                Severity::Critical => "CRITICAL",
+                Severity::High => "HIGH",
+                Severity::Medium => "MEDIUM",
+                Severity::Low => "LOW",
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanSummary {
     pub total: usize,
@@ -112,9 +133,9 @@ impl ScanResults {
         };
     }
 
-    /// Exit code based on severity thresholds. SCA findings honor the
+    /// Findings at or above the failure threshold. SCA findings honor the
     /// stricter of the global `--fail-on` and `scanners.sca.fail-on-severity`.
-    pub fn max_severity_exit_code(&self, fail_on: &str, config: &Config) -> i32 {
+    pub fn failing_findings(&self, fail_on: &str, config: &Config) -> Vec<&Finding> {
         let global = parse_severity(fail_on).unwrap_or_else(|| {
             tracing::warn!(
                 "unknown fail-on value '{}', defaulting to critical",
@@ -126,19 +147,23 @@ impl ScanResults {
             .unwrap_or_else(|| global.clone())
             .min(global.clone());
 
-        let failed = self.findings.iter().any(|f| {
-            let threshold = if f.scanner == "sca" {
-                &sca_threshold
-            } else {
-                &global
-            };
-            f.severity >= *threshold
-        });
-        if failed {
-            1
-        } else {
-            0
-        }
+        self.findings
+            .iter()
+            .filter(|f| {
+                let threshold = if f.scanner == "sca" {
+                    &sca_threshold
+                } else {
+                    &global
+                };
+                f.severity >= *threshold
+            })
+            .collect()
+    }
+
+    /// Exit code based on severity thresholds: 1 when any finding is at or
+    /// above the failure threshold, 0 otherwise.
+    pub fn max_severity_exit_code(&self, fail_on: &str, config: &Config) -> i32 {
+        i32::from(!self.failing_findings(fail_on, config).is_empty())
     }
 }
 
@@ -218,14 +243,20 @@ fn print_scanner_done(name: &str, results: &ScanResults, config: &Config) {
         println!("{}{}", prefix, msg.green());
     } else {
         let parts: Vec<String> = [
-            (results.summary.critical, "critical"),
-            (results.summary.high, "high"),
-            (results.summary.medium, "medium"),
-            (results.summary.low, "low"),
+            (results.summary.critical, Severity::Critical),
+            (results.summary.high, Severity::High),
+            (results.summary.medium, Severity::Medium),
+            (results.summary.low, Severity::Low),
         ]
         .iter()
         .filter(|(c, _)| *c > 0)
-        .map(|(c, label)| format!("{} {}", c, label))
+        .map(|(c, sev)| {
+            if ja {
+                format!("{} {} 件", sev.label("ja"), c)
+            } else {
+                format!("{} {}", c, sev.label("en").to_lowercase())
+            }
+        })
         .collect();
         if ja {
             println!("{}検出 {} 件 ({})", prefix, count, parts.join(", "));
@@ -235,18 +266,37 @@ fn print_scanner_done(name: &str, results: &ScanResults, config: &Config) {
     }
 }
 
-pub fn check_dependencies() {
-    let tools = vec![
-        ("semgrep", "SAST scanner"),
-        ("trivy", "SCA / Container / IaC scanner"),
-        ("gitleaks", "Secret scanner"),
-    ];
+pub fn check_dependencies(lang: &str) {
+    let ja = lang == "ja";
+    let tools = if ja {
+        vec![
+            ("semgrep", "SAST スキャナー"),
+            ("trivy", "SCA / コンテナ / IaC スキャナー"),
+            ("gitleaks", "シークレットスキャナー"),
+        ]
+    } else {
+        vec![
+            ("semgrep", "SAST scanner"),
+            ("trivy", "SCA / Container / IaC scanner"),
+            ("gitleaks", "Secret scanner"),
+        ]
+    };
 
     for (cmd, desc) in tools {
         let status = if which::which(cmd).is_ok() {
-            format!("{} Found", "✔".green())
+            let label = if ja {
+                "インストール済み"
+            } else {
+                "Found"
+            };
+            format!("{} {}", "✔".green(), label)
         } else {
-            format!("{} Not found", "✘".red())
+            let label = if ja {
+                "未インストール"
+            } else {
+                "Not found"
+            };
+            format!("{} {}", "✘".red(), label)
         };
         println!("  {} {:<12} {}", status, cmd, desc.dimmed());
     }
@@ -335,6 +385,28 @@ mod tests {
         assert_eq!(r.max_severity_exit_code("bogus", &config), 0);
         let r_crit = results_with(vec![finding("sast", Severity::Critical)]);
         assert_eq!(r_crit.max_severity_exit_code("bogus", &config), 1);
+    }
+
+    #[test]
+    fn test_severity_labels_ja() {
+        assert_eq!(Severity::Critical.label("ja"), "重大");
+        assert_eq!(Severity::High.label("ja"), "高");
+        assert_eq!(Severity::Medium.label("ja"), "中");
+        assert_eq!(Severity::Low.label("ja"), "低");
+        assert_eq!(Severity::Critical.label("en"), "CRITICAL");
+    }
+
+    #[test]
+    fn test_failing_findings_reports_only_threshold_breaches() {
+        let config = Config::default();
+        let r = results_with(vec![
+            finding("sast", Severity::Critical),
+            finding("sast", Severity::High),
+            finding("sast", Severity::Low),
+        ]);
+        assert_eq!(r.failing_findings("critical", &config).len(), 1);
+        assert_eq!(r.failing_findings("high", &config).len(), 2);
+        assert_eq!(r.failing_findings("low", &config).len(), 3);
     }
 
     #[test]
