@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and publish (e.g. v0.1.0)'
+        required: true
 
 permissions:
   contents: write
@@ -75,7 +80,7 @@ jobs:
       - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
@@ -103,7 +108,7 @@ jobs:
         run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
       - name: Build and push
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           VERSION="${TAG#v}"
           MAJOR_MINOR="${VERSION%.*}"
@@ -146,7 +151,7 @@ jobs:
       - name: Update baneido/homebrew-tap
         env:
           TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           if [ -z "$TAP_TOKEN" ]; then
             echo "::warning::TAP_GITHUB_TOKEN not set — skipping Homebrew formula update"
