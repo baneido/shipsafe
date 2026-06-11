@@ -1,0 +1,226 @@
+name: 'ShipSafe Security Scan'
+description: 'AI-Powered Pre-Deploy Security Gate - SAST, SCA, and Secrets scanning in one action'
+author: 'Baneido, Inc.'
+
+branding:
+  icon: 'shield'
+  color: 'red'
+
+inputs:
+  scanners:
+    description: 'Comma-separated list of scanners to run (sast,sca,secrets)'
+    required: false
+    default: 'sast,sca,secrets'
+  fail-on:
+    description: 'Minimum severity to fail the build (critical,high,medium,low)'
+    required: false
+    default: 'critical'
+  format:
+    description: 'Output format for the report file (sarif,json,table)'
+    required: false
+    default: 'sarif'
+  lang:
+    description: 'Output language (en,ja)'
+    required: false
+    default: 'en'
+  config:
+    description: 'Path to .shipsafe.yml config file'
+    required: false
+    default: '.shipsafe.yml'
+  pr-comment:
+    description: 'Post results as PR comments (summary + inline)'
+    required: false
+    default: 'true'
+  upload-sarif:
+    description: 'Upload SARIF results to the GitHub Security tab'
+    required: false
+    default: 'true'
+  version:
+    description: 'ShipSafe version to install (e.g. v0.1.0 or latest)'
+    required: false
+    default: 'latest'
+  github-token:
+    description: 'Token used to post PR comments'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  findings-count:
+    description: 'Total number of findings'
+    value: ${{ steps.counts.outputs.findings-count }}
+  critical-count:
+    description: 'Number of critical findings'
+    value: ${{ steps.counts.outputs.critical-count }}
+  sarif-file:
+    description: 'Path to SARIF output file'
+    value: ${{ steps.counts.outputs.sarif-file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install ShipSafe
+      shell: bash
+      env:
+        SHIPSAFE_VERSION: ${{ inputs.version }}
+      run: |
+        # Prefer the bundled install script (downloads a release binary);
+        # fall back to building from source if no release asset matches.
+        if ! bash "${GITHUB_ACTION_PATH}/scripts/install.sh" --version "${SHIPSAFE_VERSION}" --bin-dir /usr/local/bin; then
+          echo "::warning::release binary unavailable, building shipsafe from the action source"
+          cargo install --path "${GITHUB_ACTION_PATH}" --locked
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        fi
+        shipsafe version || "$HOME/.cargo/bin/shipsafe" version
+
+    - name: Install scanner dependencies
+      shell: bash
+      run: |
+        if ! command -v semgrep >/dev/null; then
+          pip install --quiet semgrep || pip install --quiet --break-system-packages semgrep
+        fi
+        if ! command -v trivy >/dev/null; then
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+        fi
+        if ! command -v gitleaks >/dev/null; then
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks || mv /tmp/gitleaks /usr/local/bin/gitleaks
+        fi
+        shipsafe doctor
+
+    - name: Run ShipSafe Scan
+      id: scan
+      shell: bash
+      env:
+        SHIPSAFE_SCANNERS: ${{ inputs.scanners }}
+        SHIPSAFE_FAIL_ON: ${{ inputs.fail-on }}
+        SHIPSAFE_FORMAT: ${{ inputs.format }}
+        SHIPSAFE_LANG: ${{ inputs.lang }}
+        SHIPSAFE_CONFIG: ${{ inputs.config }}
+      run: |
+        set +e
+        EXT="${SHIPSAFE_FORMAT}"
+        [ "$EXT" = "table" ] && EXT="txt"
+        shipsafe scan \
+          --scanners "${SHIPSAFE_SCANNERS}" \
+          --fail-on "${SHIPSAFE_FAIL_ON}" \
+          --format "${SHIPSAFE_FORMAT}" \
+          --lang "${SHIPSAFE_LANG}" \
+          --config "${SHIPSAFE_CONFIG}" \
+          --output "shipsafe-results.${EXT}" \
+          --json-output shipsafe-results.json
+        echo "exit-code=$?" >> "$GITHUB_OUTPUT"
+
+    - name: Collect outputs
+      id: counts
+      shell: bash
+      env:
+        SHIPSAFE_FORMAT: ${{ inputs.format }}
+      run: |
+        TOTAL=$(jq -r '.summary.total' shipsafe-results.json)
+        CRITICAL=$(jq -r '.summary.critical' shipsafe-results.json)
+        echo "findings-count=${TOTAL}" >> "$GITHUB_OUTPUT"
+        echo "critical-count=${CRITICAL}" >> "$GITHUB_OUTPUT"
+        if [ "${SHIPSAFE_FORMAT}" = "sarif" ]; then
+          echo "sarif-file=shipsafe-results.sarif" >> "$GITHUB_OUTPUT"
+        else
+          echo "sarif-file=" >> "$GITHUB_OUTPUT"
+        fi
+        echo "### ShipSafe: ${TOTAL} finding(s), ${CRITICAL} critical" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload SARIF to GitHub Security
+      if: inputs.upload-sarif == 'true' && inputs.format == 'sarif'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: shipsafe-results.sarif
+      continue-on-error: true
+
+    - name: Post PR comments
+      if: inputs.pr-comment == 'true' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      env:
+        FAIL_ON: ${{ inputs.fail-on }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const results = JSON.parse(fs.readFileSync('shipsafe-results.json', 'utf8'));
+          const { findings, summary } = results;
+          const marker = '<!-- shipsafe-report -->';
+          const sevIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '⚪' };
+
+          // --- Summary comment (updated in place to avoid duplicates) ---
+          let body = `${marker}\n## 🛡️ ShipSafe Security Scan\n\n`;
+          body += `| Severity | Count |\n|---|---|\n`;
+          body += `| 🔴 Critical | ${summary.critical} |\n`;
+          body += `| 🟠 High | ${summary.high} |\n`;
+          body += `| 🟡 Medium | ${summary.medium} |\n`;
+          body += `| ⚪ Low | ${summary.low} |\n`;
+          body += `| **Total** | **${summary.total}** |\n\n`;
+          if (findings.length > 0) {
+            body += `<details><summary>Findings (${Math.min(findings.length, 30)} shown)</summary>\n\n`;
+            for (const f of findings.slice(0, 30)) {
+              const loc = f.line ? `${f.file}:${f.line}` : f.file;
+              body += `- ${sevIcon[f.severity] || ''} **${f.severity.toUpperCase()}** \`${f.id}\` — ${f.title} (${loc})\n`;
+            }
+            body += `\n</details>\n`;
+          } else {
+            body += `✅ No security findings.\n`;
+          }
+          body += `\n_fail-on: \`${process.env.FAIL_ON}\` · powered by [ShipSafe](https://github.com/baneido/shipsafe)_`;
+
+          const { owner, repo } = context.repo;
+          const issue_number = context.payload.pull_request.number;
+          const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+          const existing = comments.find(c => c.body && c.body.includes(marker));
+          if (existing) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+          } else {
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+          }
+
+          // --- Inline review comments on changed lines (deduplicated) ---
+          const prFiles = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: issue_number, per_page: 100 });
+          const changedFiles = new Set(prFiles.map(f => f.filename));
+          const headSha = context.payload.pull_request.head.sha;
+
+          const existingReviewComments = await github.paginate(github.rest.pulls.listReviewComments, { owner, repo, pull_number: issue_number, per_page: 100 });
+          const seen = new Set(existingReviewComments
+            .filter(c => c.body && c.body.includes('shipsafe-inline'))
+            .map(c => `${c.path}:${c.line || c.original_line}`));
+
+          let posted = 0;
+          for (const f of findings) {
+            if (posted >= 20) break;
+            if (!f.line || !changedFiles.has(f.file)) continue;
+            const key = `${f.file}:${f.line}`;
+            if (seen.has(key)) continue;
+            const fix = f.fix_suggestion ? `\n\n**Suggested fix:** ${f.fix_suggestion}` : '';
+            const cwe = f.cwe ? ` (${f.cwe})` : '';
+            const cbody = `<!-- shipsafe-inline -->${sevIcon[f.severity] || ''} **ShipSafe ${f.severity.toUpperCase()}**: ${f.title}${cwe}\n\n${f.description}${fix}`;
+            try {
+              await github.rest.pulls.createReviewComment({
+                owner, repo, pull_number: issue_number,
+                commit_id: headSha, path: f.file, line: f.line, side: 'RIGHT',
+                body: cbody,
+              });
+              seen.add(key);
+              posted++;
+            } catch (e) {
+              core.info(`inline comment skipped for ${key}: ${e.message}`);
+            }
+          }
+          core.info(`posted ${posted} inline comment(s)`);
+
+    - name: Enforce fail-on threshold
+      if: steps.scan.outputs.exit-code != '0'
+      shell: bash
+      env:
+        SHIPSAFE_EXIT_CODE: ${{ steps.scan.outputs.exit-code }}
+        SHIPSAFE_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        if [ "$SHIPSAFE_EXIT_CODE" = "1" ]; then
+          echo "::error::ShipSafe found findings at or above '${SHIPSAFE_FAIL_ON}' severity"
+        else
+          echo "::error::ShipSafe scan failed to run (exit code $SHIPSAFE_EXIT_CODE)"
+        fi
+        exit 1

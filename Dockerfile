@@ -13,5 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/shipsafe /usr/local/bin/shipsafe
+
+RUN useradd --create-home --uid 10001 shipsafe \
+    && mkdir -p /scan && chown shipsafe /scan
+USER shipsafe
+WORKDIR /scan
+
 ENTRYPOINT ["shipsafe"]
 CMD ["scan"]

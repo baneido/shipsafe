@@ -58,6 +58,10 @@ enum Commands {
         /// テストディレクトリ・テストファイルを除外
         #[arg(long)]
         exclude_tests: bool,
+
+        /// メイン出力に加えて JSON 結果をこのパスへ書き出す (CI 連携用)
+        #[arg(long)]
+        json_output: Option<PathBuf>,
     },
 
     /// 設定ファイルを初期化
@@ -88,6 +92,7 @@ async fn main() -> anyhow::Result<()> {
             output,
             fail_on,
             exclude_tests,
+            json_output,
         } => {
             print_banner();
 
@@ -103,6 +108,12 @@ async fn main() -> anyhow::Result<()> {
             let results = scanners::run_all(&path, &scanner_list, &config).await?;
 
             reporters::report(&results, &format, output.as_deref(), &config)?;
+
+            // Machine-readable copy for CI integrations (action outputs and
+            // PR comments) regardless of the primary format.
+            if let Some(ref json_path) = json_output {
+                std::fs::write(json_path, reporters::json::render(&results)?)?;
+            }
 
             if results.max_severity_exit_code(&fail_on, &config) != 0 {
                 let failing = results.failing_findings(&fail_on, &config);
