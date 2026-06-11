@@ -60,7 +60,7 @@ jobs:
       - name: Warm trivy vulnerability DB
         # Two trivy processes racing on the first DB download corrupts the
         # cache; download once before the parallel test run.
-        run: trivy fs --quiet --format json --scanners vuln fixtures/vulnerable-sample-app/js > /dev/null
+        run: trivy fs --quiet --format json --scanners vuln Cargo.lock > /dev/null
       - name: E2E tests (vulnerable-sample-app, all scanners required)
         run: cargo test --test integration_test
         env:

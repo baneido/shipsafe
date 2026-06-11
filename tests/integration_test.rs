@@ -15,6 +15,33 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
+/// Copy a fixture directory into a temp dir, stripping the ".fixture"
+/// suffix from file names. Dependency manifests are stored with the suffix
+/// so Dependabot / the GitHub dependency graph don't report the deliberately
+/// vulnerable pins as real repository vulnerabilities.
+fn staged_fixture(name: &str) -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let src = fixture(name);
+    let dst = dir.path().join(name);
+    copy_unfixtured(&src, &dst);
+    (dir, dst)
+}
+
+fn copy_unfixtured(src: &Path, dst: &Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for entry in std::fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        let target_name = file_name.strip_suffix(".fixture").unwrap_or(&file_name);
+        let target = dst.join(target_name);
+        if entry.file_type().unwrap().is_dir() {
+            copy_unfixtured(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).unwrap();
+        }
+    }
+}
+
 fn scanner_available(name: &str) -> bool {
     let available = which::which(name).is_ok();
     if !available && std::env::var("SHIPSAFE_REQUIRE_SCANNERS").is_ok() {
@@ -204,8 +231,14 @@ fn scan_json(target: &Path, scanners: &str, extra: &[&str]) -> serde_json::Value
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("results.json");
     let mut cmd = shipsafe();
+    // A non-existent config falls back to defaults, keeping the test
+    // hermetic from the repository's own .shipsafe.yml (which allowlists
+    // the fixtures).
+    let no_config = dir.path().join("no-config.yml");
     cmd.args([
         "scan",
+        "--config",
+        no_config.to_str().unwrap(),
         "-p",
         target.to_str().unwrap(),
         "-s",
@@ -214,7 +247,6 @@ fn scan_json(target: &Path, scanners: &str, extra: &[&str]) -> serde_json::Value
         "json",
         "--output",
         out.to_str().unwrap(),
-        // Keep exit 0 even with findings so the JSON is always written.
         "--fail-on",
         "critical",
     ]);
@@ -392,7 +424,8 @@ fn test_sca_detection_js_lockfile() {
         eprintln!("trivy missing — skipping detection assertions");
         return;
     }
-    let json = scan_json(&fixture("js"), "sca", &[]);
+    let (_guard, staged) = staged_fixture("js");
+    let json = scan_json(&staged, "sca", &[]);
     let findings = json["findings"].as_array().unwrap();
     assert!(
         findings
@@ -408,7 +441,8 @@ fn test_sca_detection_python_requirements() {
         eprintln!("trivy missing — skipping detection assertions");
         return;
     }
-    let json = scan_json(&fixture("python"), "sca", &[]);
+    let (_guard, staged) = staged_fixture("python");
+    let json = scan_json(&staged, "sca", &[]);
     let findings = json["findings"].as_array().unwrap();
     assert!(
         findings.iter().any(|f| {
@@ -430,6 +464,8 @@ fn test_fail_on_exit_code_with_findings() {
     shipsafe()
         .args([
             "scan",
+            "--config",
+            "/nonexistent-shipsafe.yml",
             "-p",
             fixture("secrets").to_str().unwrap(),
             "-s",
