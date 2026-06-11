@@ -5,17 +5,25 @@ scanners:
     enabled: true
     rules:
       - "owasp-top-10"
+      - "ai-generated-code"
+    # Deliberately vulnerable fixtures and rule test files.
     exclude:
+      - "fixtures"
+      - "rules"
       - "tests/**"
       - "target/**"
 
   sca:
     enabled: true
-    fail-on-severity: high
+    fail-on-severity: critical
 
   secrets:
     enabled: true
-    allow-patterns: []
+    allow-patterns:
+      - "fixtures/vulnerable-sample-app/"
+      - "rules/sast/"
+      # Unit-test fixtures for the JP cloud rules live in the scanner source.
+      - "src/scanners/secrets.rs"
 
 output:
   format: table
@@ -24,3 +32,8 @@ output:
 ai:
   triage: false
   fix-suggestions: false
+
+# Applied to findings from every scanner.
+exclude:
+  - "fixtures/**"
+  - "rules/**"

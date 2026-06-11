@@ -1,0 +1,28 @@
+# Self-scan: run the local ShipSafe composite action on this repository.
+# Serves as the end-to-end test for the action (install, scan, SARIF upload
+# to the Security tab, and PR comments).
+name: ShipSafe Self-Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  shipsafe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShipSafe scan (local action)
+        uses: ./
+        with:
+          fail-on: critical
+          format: sarif
+          pr-comment: 'true'
+          upload-sarif: 'true'
