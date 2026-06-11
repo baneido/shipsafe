@@ -21,7 +21,7 @@ LABEL org.opencontainers.image.title="ShipSafe" \
       org.opencontainers.image.source="https://github.com/baneido/shipsafe" \
       org.opencontainers.image.licenses="MIT"
 
-ARG TRIVY_VERSION=0.58.1
+ARG TRIVY_VERSION=0.71.0
 ARG GITLEAKS_VERSION=8.30.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
