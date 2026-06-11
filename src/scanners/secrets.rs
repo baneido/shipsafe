@@ -5,9 +5,57 @@ use regex::Regex;
 use std::path::Path;
 use std::process::Command;
 
+/// Bundled gitleaks extension config with Japanese cloud / SaaS credential
+/// patterns (Sakura Cloud, LINE, PayPay, freee, kintone). Extends the
+/// gitleaks default ruleset via `useDefault = true`.
+const JAPAN_CLOUD_RULES: &str = include_str!("../../rules/secrets/japan-cloud.toml");
+
+/// Materialize the bundled gitleaks config to a temp file so gitleaks can
+/// consume it via --config. Writes to a unique staging file first and renames
+/// into place so concurrent invocations never observe a partial file.
+fn gitleaks_config_path() -> std::io::Result<std::path::PathBuf> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static STAGING_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    let path = std::env::temp_dir().join(format!(
+        "shipsafe-{}-gitleaks.toml",
+        env!("CARGO_PKG_VERSION")
+    ));
+    let staging = path.with_extension(format!(
+        "toml.{}.{}",
+        std::process::id(),
+        STAGING_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&staging, JAPAN_CLOUD_RULES)?;
+    if let Err(e) = std::fs::rename(&staging, &path) {
+        let _ = std::fs::remove_file(&staging);
+        if !path.is_file() {
+            return Err(e);
+        }
+    }
+    Ok(path)
+}
+
 /// Classify a gitleaks RuleID into a secret category.
 fn classify_secret(rule_id: &str) -> &'static str {
     let id = rule_id.to_lowercase();
+    // Japanese cloud / SaaS rules (matched before generic substrings:
+    // e.g. "linear-api-key" must not classify as a LINE token).
+    if id.starts_with("sakura-cloud") {
+        return "Sakura Cloud Credential";
+    }
+    if id.starts_with("line-channel") {
+        return "LINE API Credential";
+    }
+    if id.starts_with("paypay") {
+        return "PayPay API Key";
+    }
+    if id.starts_with("freee") {
+        return "freee API Credential";
+    }
+    if id.starts_with("kintone") {
+        return "kintone API Token";
+    }
     if id.contains("aws") {
         "AWS Credential"
     } else if id.contains("gcp") || id.contains("google") {
@@ -48,6 +96,18 @@ fn classify_secret(rule_id: &str) -> &'static str {
 /// Map a gitleaks RuleID to severity.
 fn severity_from_rule_id(rule_id: &str) -> Severity {
     let id = rule_id.to_lowercase();
+    // Japanese cloud / SaaS rules. Cloud infrastructure credentials are
+    // critical; payment/messaging/SaaS tokens are high.
+    if id.starts_with("sakura-cloud") {
+        return Severity::Critical;
+    }
+    if id.starts_with("line-channel")
+        || id.starts_with("paypay")
+        || id.starts_with("freee")
+        || id.starts_with("kintone")
+    {
+        return Severity::High;
+    }
     // Cloud provider credentials and private keys are critical
     if id.contains("aws")
         || id.contains("gcp")
@@ -198,6 +258,19 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
         .arg("--report-path")
         .arg(&report_path)
         .arg("--no-banner");
+
+    // Extend the default ruleset with bundled Japanese cloud/SaaS patterns.
+    match gitleaks_config_path() {
+        Ok(config_path) => {
+            cmd.arg("--config").arg(config_path);
+        }
+        Err(e) => {
+            tracing::warn!(
+                "failed to materialize bundled gitleaks config, using defaults: {}",
+                e
+            );
+        }
+    }
 
     // Enable git history scanning
     if config.scanners.secrets.scan_history {
@@ -413,5 +486,119 @@ mod tests {
             "Match": "key=some-secret"
         });
         assert!(!is_excluded_by_allow_patterns(&leak, &[]));
+    }
+
+    #[test]
+    fn test_classify_japan_cloud_rules() {
+        assert_eq!(
+            classify_secret("sakura-cloud-api-key"),
+            "Sakura Cloud Credential"
+        );
+        assert_eq!(
+            classify_secret("line-channel-access-token"),
+            "LINE API Credential"
+        );
+        assert_eq!(
+            classify_secret("line-channel-secret"),
+            "LINE API Credential"
+        );
+        assert_eq!(classify_secret("paypay-api-key"), "PayPay API Key");
+        assert_eq!(
+            classify_secret("freee-access-token"),
+            "freee API Credential"
+        );
+        assert_eq!(classify_secret("kintone-api-token"), "kintone API Token");
+        // "linear-api-key" (gitleaks default) must NOT classify as LINE.
+        assert_ne!(classify_secret("linear-api-key"), "LINE API Credential");
+    }
+
+    #[test]
+    fn test_severity_japan_cloud_rules() {
+        assert_eq!(
+            severity_from_rule_id("sakura-cloud-api-key"),
+            Severity::Critical
+        );
+        assert_eq!(
+            severity_from_rule_id("line-channel-access-token"),
+            Severity::High
+        );
+        assert_eq!(severity_from_rule_id("paypay-api-key"), Severity::High);
+        assert_eq!(severity_from_rule_id("freee-access-token"), Severity::High);
+        assert_eq!(severity_from_rule_id("kintone-api-token"), Severity::High);
+    }
+
+    #[test]
+    fn test_gitleaks_config_materialized() {
+        let path = gitleaks_config_path().unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("useDefault = true"));
+        for id in [
+            "sakura-cloud-api-key",
+            "line-channel-access-token",
+            "line-channel-secret",
+            "paypay-api-key",
+            "freee-access-token",
+            "kintone-api-token",
+        ] {
+            assert!(content.contains(id), "missing rule id {}", id);
+        }
+    }
+
+    /// Extract `regex = '''...'''` values from the bundled TOML, in order.
+    fn bundled_regexes() -> Vec<String> {
+        JAPAN_CLOUD_RULES
+            .lines()
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix("regex = '''")?
+                    .strip_suffix("'''")
+                    .map(|s| s.to_string())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_japan_cloud_regexes_match_examples() {
+        // The TOML regexes use RE2-compatible syntax, which the rust regex
+        // crate also accepts; verify each bundled pattern (extracted from the
+        // embedded TOML so this test cannot drift) matches a representative
+        // fake credential and skips benign text. Order follows the TOML.
+        let line_token = format!(r#"LINE_CHANNEL_ACCESS_TOKEN = "{}""#, "Ab1+/".repeat(24));
+        let cases: &[(&str, &str)] = &[
+            (
+                r#"SAKURA_ACCESS_TOKEN = "01234567-89ab-cdef-0123-456789abcdef""#,
+                r#"sakura_no = "short""#,
+            ),
+            (&line_token, r#"channel_token = "short""#),
+            (
+                r#"LINE_CHANNEL_SECRET = "0123456789abcdef0123456789abcdef""#,
+                r#"channel_secret = "not-hex""#,
+            ),
+            (
+                r#"PAYPAY_API_KEY = "a_1Bc-2De3Fg4Hi5Jk6L""#,
+                r#"paypay_url = "https://x.test""#,
+            ),
+            (
+                r#"FREEE_ACCESS_TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef""#,
+                r#"freee_plan = "basic""#,
+            ),
+            (
+                r#"KINTONE_API_TOKEN = "abcdefghijklmnopqrstuvwxyz012345""#,
+                r#"kintone_domain = "example.cybozu.com""#,
+            ),
+        ];
+
+        let regexes = bundled_regexes();
+        assert_eq!(regexes.len(), cases.len(), "rule count drifted");
+
+        for (pattern, (positive, negative)) in regexes.iter().zip(cases) {
+            let re = Regex::new(pattern).unwrap();
+            assert!(re.is_match(positive), "pattern should match: {}", positive);
+            assert!(
+                !re.is_match(negative),
+                "pattern should not match: {}",
+                negative
+            );
+        }
     }
 }
