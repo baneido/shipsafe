@@ -13,7 +13,7 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
 
     let mut cmd = Command::new("semgrep");
     cmd.arg("scan").arg("--json").arg("--quiet").arg(path);
-    build_semgrep_args(&mut cmd, config);
+    build_semgrep_args(&mut cmd, config, path);
 
     let output = cmd.output()?;
 
@@ -83,8 +83,43 @@ fn ai_generated_code_rules_path() -> std::io::Result<std::path::PathBuf> {
     Ok(dir)
 }
 
+/// True if the file looks like a semgrep rule file (YAML with a top-level
+/// `rules:` key). Used when auto-discovering a project's rules/ directory so
+/// unrelated YAML never breaks the scan.
+fn is_semgrep_rule_file(path: &Path) -> bool {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    content
+        .lines()
+        .any(|line| line.trim_end() == "rules:" || line.starts_with("rules:"))
+}
+
+/// Discover custom semgrep rule files in `<scan-path>/rules/` (recursive).
+fn discover_custom_rules(scan_path: &Path) -> Vec<std::path::PathBuf> {
+    let rules_dir = scan_path.join("rules");
+    if !rules_dir.is_dir() {
+        return vec![];
+    }
+    let mut found: Vec<std::path::PathBuf> = walkdir::WalkDir::new(&rules_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().is_file()
+                && matches!(
+                    e.path().extension().and_then(|x| x.to_str()),
+                    Some("yml") | Some("yaml")
+                )
+                && is_semgrep_rule_file(e.path())
+        })
+        .map(|e| e.into_path())
+        .collect();
+    found.sort();
+    found
+}
+
 /// Build semgrep rule config and exclude arguments.
-fn build_semgrep_args(cmd: &mut Command, config: &Config) {
+fn build_semgrep_args(cmd: &mut Command, config: &Config, scan_path: &Path) {
     // Add rule configs; default to OWASP Top 10 if none specified
     let rules = &config.scanners.sast.rules;
     if rules.is_empty() {
@@ -111,6 +146,21 @@ fn build_semgrep_args(cmd: &mut Command, config: &Config) {
                 }
             }
         }
+    }
+
+    // Explicit custom rule files/dirs from .shipsafe.yml
+    for rules_path in &config.scanners.sast.rules_paths {
+        cmd.arg("--config").arg(rules_path);
+    }
+
+    // Auto-discovered rules from the project's rules/ directory
+    for rule_file in discover_custom_rules(scan_path) {
+        cmd.arg("--config").arg(rule_file);
+    }
+
+    // Disabled rule IDs
+    for rule_id in &config.scanners.sast.disabled_rules {
+        cmd.arg("--exclude-rule").arg(rule_id);
     }
 
     // Add excludes
@@ -387,7 +437,7 @@ mod tests {
         config.scanners.sast.exclude = vec![];
 
         let mut cmd = Command::new("semgrep");
-        build_semgrep_args(&mut cmd, &config);
+        build_semgrep_args(&mut cmd, &config, Path::new("."));
 
         let args = get_args(&cmd);
         assert!(args.contains(&"--config".to_string()));
@@ -401,13 +451,56 @@ mod tests {
         config.scanners.sast.exclude = vec!["vendor".into()];
 
         let mut cmd = Command::new("semgrep");
-        build_semgrep_args(&mut cmd, &config);
+        build_semgrep_args(&mut cmd, &config, Path::new("."));
 
         let args = get_args(&cmd);
         assert!(args.contains(&"p/owasp-top-ten".to_string()));
         assert!(args.iter().any(|a| a.ends_with("ai-generated-rules")));
         assert!(args.contains(&"--exclude".to_string()));
         assert!(args.contains(&"vendor".to_string()));
+    }
+
+    #[test]
+    fn test_rules_paths_and_disabled_rules_args() {
+        let mut config = Config::default();
+        config.scanners.sast.rules_paths = vec!["./my-rules/".into()];
+        config.scanners.sast.disabled_rules = vec!["ai-rust-unsafe-block".into()];
+
+        let mut cmd = Command::new("semgrep");
+        build_semgrep_args(&mut cmd, &config, Path::new("."));
+
+        let args = get_args(&cmd);
+        assert!(args.contains(&"./my-rules/".to_string()));
+        assert!(args.contains(&"--exclude-rule".to_string()));
+        assert!(args.contains(&"ai-rust-unsafe-block".to_string()));
+    }
+
+    #[test]
+    fn test_discover_custom_rules() {
+        let dir =
+            std::env::temp_dir().join(format!("shipsafe-discover-test-{}", std::process::id()));
+        let rules_dir = dir.join("rules");
+        std::fs::create_dir_all(&rules_dir).unwrap();
+        std::fs::write(
+            rules_dir.join("custom.yml"),
+            "rules:\n  - id: x\n    pattern: foo\n    message: m\n    languages: [python]\n    severity: ERROR\n",
+        )
+        .unwrap();
+        // Non-rule YAML must be ignored.
+        std::fs::write(rules_dir.join("docker-compose.yml"), "services: {}\n").unwrap();
+        // Non-YAML files must be ignored.
+        std::fs::write(rules_dir.join("README.md"), "rules:\n").unwrap();
+
+        let found = discover_custom_rules(&dir);
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert_eq!(found.len(), 1);
+        assert!(found[0].ends_with("custom.yml"));
+    }
+
+    #[test]
+    fn test_discover_custom_rules_no_dir() {
+        assert!(discover_custom_rules(Path::new("/nonexistent-shipsafe")).is_empty());
     }
 
     #[test]

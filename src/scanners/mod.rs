@@ -165,7 +165,56 @@ impl ScanResults {
     pub fn max_severity_exit_code(&self, fail_on: &str, config: &Config) -> i32 {
         i32::from(!self.failing_findings(fail_on, config).is_empty())
     }
+
+    /// Drop findings whose file path matches any of the glob patterns.
+    /// Applies to results from every scanner, so excludes work uniformly
+    /// even for tools without a native exclude flag.
+    pub fn apply_excludes(&mut self, patterns: &[String]) {
+        if patterns.is_empty() {
+            return;
+        }
+        let compiled: Vec<glob::Pattern> = patterns
+            .iter()
+            .filter_map(|p| match glob::Pattern::new(p) {
+                Ok(g) => Some(g),
+                Err(e) => {
+                    tracing::warn!("invalid exclude glob '{}': {}", p, e);
+                    None
+                }
+            })
+            .collect();
+        self.findings.retain(|f| {
+            let normalized = f.file.strip_prefix("./").unwrap_or(&f.file);
+            !compiled.iter().any(|g| g.matches(normalized))
+        });
+        self.recalculate_summary();
+    }
 }
+
+/// Globs excluded by `--exclude-tests`: common test directories and test
+/// file naming conventions across ecosystems.
+pub const TEST_EXCLUDE_GLOBS: &[&str] = &[
+    "tests/**",
+    "test/**",
+    "spec/**",
+    "__tests__/**",
+    "**/tests/**",
+    "**/test/**",
+    "**/spec/**",
+    "**/__tests__/**",
+    "**/*_test.go",
+    "**/*_test.py",
+    "**/test_*.py",
+    "**/*_test.rb",
+    "**/*.test.js",
+    "**/*.test.jsx",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.js",
+    "**/*.spec.jsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+];
 
 /// Parse a severity string (as used in `--fail-on` and config files).
 fn parse_severity(s: &str) -> Option<Severity> {
@@ -230,6 +279,7 @@ pub async fn run_all(path: &Path, scanners: &[&str], config: &Config) -> Result<
     }
 
     results.deduplicate();
+    results.apply_excludes(&config.exclude);
 
     Ok(results)
 }
@@ -522,6 +572,60 @@ mod tests {
         results.deduplicate();
         assert_eq!(results.findings.len(), 0);
         assert_eq!(results.summary.total, 0);
+    }
+
+    #[test]
+    fn test_apply_excludes_glob() {
+        let mut results = results_with(vec![
+            make_finding("a", "sast", Severity::High, "vendor/lib.py", Some(1)),
+            make_finding("b", "sast", Severity::High, "src/app.py", Some(2)),
+            make_finding("c", "sast", Severity::High, "./vendor/other.py", Some(3)),
+        ]);
+        results.apply_excludes(&["vendor/**".to_string()]);
+        assert_eq!(results.findings.len(), 1);
+        assert_eq!(results.findings[0].file, "src/app.py");
+        assert_eq!(results.summary.total, 1);
+    }
+
+    #[test]
+    fn test_apply_excludes_empty_patterns_is_noop() {
+        let mut results = results_with(vec![make_finding(
+            "a",
+            "sast",
+            Severity::High,
+            "vendor/lib.py",
+            Some(1),
+        )]);
+        results.apply_excludes(&[]);
+        assert_eq!(results.findings.len(), 1);
+    }
+
+    #[test]
+    fn test_apply_excludes_invalid_glob_ignored() {
+        let mut results = results_with(vec![make_finding(
+            "a",
+            "sast",
+            Severity::High,
+            "src/app.py",
+            Some(1),
+        )]);
+        results.apply_excludes(&["[bad".to_string()]);
+        assert_eq!(results.findings.len(), 1);
+    }
+
+    #[test]
+    fn test_exclude_tests_globs_match_common_layouts() {
+        let patterns: Vec<String> = TEST_EXCLUDE_GLOBS.iter().map(|s| s.to_string()).collect();
+        let mut results = results_with(vec![
+            make_finding("a", "sast", Severity::High, "tests/test_app.py", Some(1)),
+            make_finding("b", "sast", Severity::High, "src/__tests__/x.js", Some(2)),
+            make_finding("c", "sast", Severity::High, "pkg/handler_test.go", Some(3)),
+            make_finding("d", "sast", Severity::High, "src/Button.test.tsx", Some(4)),
+            make_finding("e", "sast", Severity::High, "src/app.py", Some(5)),
+        ]);
+        results.apply_excludes(&patterns);
+        assert_eq!(results.findings.len(), 1);
+        assert_eq!(results.findings[0].file, "src/app.py");
     }
 
     #[test]

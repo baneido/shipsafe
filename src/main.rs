@@ -54,10 +54,17 @@ enum Commands {
         /// この重要度以上でビルド失敗 (critical, high, medium, low)
         #[arg(long, default_value = "critical")]
         fail_on: String,
+
+        /// テストディレクトリ・テストファイルを除外
+        #[arg(long)]
+        exclude_tests: bool,
     },
 
     /// 設定ファイルを初期化
     Init,
+
+    /// 設定ファイルを検証
+    Validate,
 
     /// インストールされているスキャナーを確認
     Doctor,
@@ -80,10 +87,17 @@ async fn main() -> anyhow::Result<()> {
             format,
             output,
             fail_on,
+            exclude_tests,
         } => {
             print_banner();
 
-            let config = config::Config::load(&cli.config, &cli.lang)?;
+            let mut config = config::Config::load(&cli.config, &cli.lang)?;
+            if exclude_tests {
+                config
+                    .exclude
+                    .extend(scanners::TEST_EXCLUDE_GLOBS.iter().map(|s| s.to_string()));
+            }
+            let config = config;
             let scanner_list: Vec<&str> = scanners.split(',').map(|s| s.trim()).collect();
 
             let results = scanners::run_all(&path, &scanner_list, &config).await?;
@@ -138,6 +152,46 @@ async fn main() -> anyhow::Result<()> {
                 println!("{} .shipsafe.yml を作成しました", "✔".green().bold());
             } else {
                 println!("{} Created .shipsafe.yml", "✔".green().bold());
+            }
+        }
+
+        Commands::Validate => {
+            let ja = cli.lang == "ja";
+            let errors = config::validate_file(&cli.config)?;
+            if errors.is_empty() {
+                if ja {
+                    println!(
+                        "{} {} は有効な設定です",
+                        "✔".green().bold(),
+                        cli.config.display()
+                    );
+                } else {
+                    println!(
+                        "{} {} is a valid configuration",
+                        "✔".green().bold(),
+                        cli.config.display()
+                    );
+                }
+            } else {
+                if ja {
+                    eprintln!(
+                        "{} {} に {} 件の問題があります:",
+                        "✘".red().bold(),
+                        cli.config.display(),
+                        errors.len()
+                    );
+                } else {
+                    eprintln!(
+                        "{} {} has {} problem(s):",
+                        "✘".red().bold(),
+                        cli.config.display(),
+                        errors.len()
+                    );
+                }
+                for e in &errors {
+                    eprintln!("  - {}", e);
+                }
+                std::process::exit(1);
             }
         }
 
