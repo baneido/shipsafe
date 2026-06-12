@@ -148,6 +148,7 @@ fn parse_trivy_json(json_str: &str) -> ScanResults {
                             .get("FixedVersion")
                             .and_then(|v| v.as_str())
                             .map(|v| format!("Upgrade to version {}", v)),
+                        ai_triage: None,
                     };
                     results.findings.push(finding);
                 }
@@ -261,6 +262,7 @@ fn parse_grype_json(json_str: &str) -> ScanResults {
                     Some(vuln_id.to_string())
                 },
                 fix_suggestion: fixed_version.map(|v| format!("Upgrade to version {}", v)),
+                ai_triage: None,
             };
             results.findings.push(finding);
         }

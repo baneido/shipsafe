@@ -49,6 +49,23 @@ pub fn render(results: &ScanResults, config: &Config) {
             println!("   {} {}", label.green().bold(), fix);
         }
 
+        if let Some(ref triage) = finding.ai_triage {
+            let label = if ja { "AI判定:" } else { "AI triage:" };
+            let verdict = triage.verdict.label(&config.lang);
+            let confidence = if ja {
+                format!("確信度: {}", triage.confidence.label("ja"))
+            } else {
+                format!("{} confidence", triage.confidence.label("en"))
+            };
+            println!(
+                "   {} {} ({}) — {}",
+                label.magenta().bold(),
+                verdict.bold(),
+                confidence,
+                triage.reason
+            );
+        }
+
         println!();
     }
 

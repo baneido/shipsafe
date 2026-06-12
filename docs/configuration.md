@@ -14,20 +14,19 @@ scanners:
 
   sast:
     enabled: true
-    # Rule packs. Built-ins:
+    # Rule packs. Built-in:
     #   owasp-top-10        → semgrep p/owasp-top-ten (registry)
-    #   ai-generated-code   → bundled AI-generated-code rules (py/js/rust/go)
     # Anything else is passed to semgrep --config verbatim
     # (registry names like p/django, local files, or directories).
+    # ("ai-generated-code", removed in 0.2.0, is ignored with a warning.)
     rules:
       - "owasp-top-10"
-      - "ai-generated-code"
     # Extra rule files or directories (semgrep format).
     rules-paths:
       - "./security/custom-rules/"
     # Rule IDs to disable (semgrep --exclude-rule).
     disabled-rules:
-      - "ai-rust-unsafe-block"
+      - "javascript.lang.security.audit.code-string-concat"
     # Paths semgrep should not scan (semgrep --exclude).
     exclude:
       - "vendor/"
@@ -60,9 +59,24 @@ exclude:
   - "generated/**"
   - "third_party/**"
 
-# Reserved for upcoming AI features (no effect in v0.1).
+# AI triage. Opt-in; requires the ANTHROPIC_API_KEY environment variable.
+# Claude reviews each finding with its surrounding code. Findings judged to
+# be false positives stay in every report — annotated with the verdict,
+# confidence, and a one-sentence reason — but are excluded from the
+# --fail-on gate. "uncertain" verdicts keep gating (fail safe), and any
+# triage failure (missing key, network, API error) just skips triage with
+# a warning; it never breaks the scan.
 ai:
+  # Also enabled per run by `shipsafe scan --ai-triage`.
   triage: false
+  # Claude model used for triage.
+  model: claude-opus-4-8
+  # Cost control: at most this many findings are sent per scan, prioritized
+  # by severity. The rest are left untriaged (and keep gating).
+  max-findings: 50
+  # Timeout for the triage API call, in seconds.
+  timeout-seconds: 120
+  # Reserved for a future release (no effect yet).
   fix-suggestions: false
 ```
 
@@ -76,7 +90,8 @@ CI configs) is ignored. See [custom-rules.md](custom-rules.md).
 ## Precedence notes
 
 - CLI flags override config: `--fail-on` (global threshold),
-  `--exclude-tests` (appends test globs to `exclude`).
+  `--exclude-tests` (appends test globs to `exclude`),
+  `--ai-triage` (enables triage even when `ai.triage` is false).
 - `scanners.sca.fail-on-severity` and `--fail-on` are combined by taking
   the stricter for SCA findings.
 - `exclude` (top level) filters results from all scanners;

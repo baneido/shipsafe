@@ -27,6 +27,7 @@ Run the security gate.
 | `--fail-on <SEV>` | `critical` | Exit 1 when findings at/above this severity exist: `critical`, `high`, `medium`, `low` |
 | `--exclude-tests` | off | Drop findings in common test directories / test files |
 | `--json-output <PATH>` | — | Additionally write JSON results (for CI integrations) |
+| `--ai-triage` | off | AI triage via the Claude API (requires `ANTHROPIC_API_KEY`) |
 
 Exit codes:
 
@@ -35,6 +36,12 @@ Exit codes:
 
 SCA findings additionally honor `scanners.sca.fail-on-severity` from the
 config; the stricter of the two thresholds wins.
+
+With `--ai-triage` (or `ai.triage: true` in the config), findings the AI
+classifies as false positives are excluded from the threshold check. They
+remain in every report, annotated with the verdict, confidence, and reason.
+Triage failures (missing key, network, API errors) print a warning and the
+gate behaves exactly as if triage had not run.
 
 ### `shipsafe init`
 

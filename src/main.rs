@@ -62,6 +62,11 @@ enum Commands {
         /// メイン出力に加えて JSON 結果をこのパスへ書き出す (CI 連携用)
         #[arg(long)]
         json_output: Option<PathBuf>,
+
+        /// AI トリアージを実行 (要 ANTHROPIC_API_KEY)。誤検知と判定された
+        /// 検出はレポートに注釈付きで残しつつ --fail-on の判定から除外する
+        #[arg(long)]
+        ai_triage: bool,
     },
 
     /// 設定ファイルを初期化
@@ -93,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
             fail_on,
             exclude_tests,
             json_output,
+            ai_triage,
         } => {
             print_banner();
 
@@ -105,7 +111,12 @@ async fn main() -> anyhow::Result<()> {
             let config = config;
             let scanner_list: Vec<&str> = scanners.split(',').map(|s| s.trim()).collect();
 
-            let results = scanners::run_all(&path, &scanner_list, &config).await?;
+            let mut results = scanners::run_all(&path, &scanner_list, &config).await?;
+
+            if ai_triage || config.ai.triage {
+                run_ai_triage(&mut results, &path, &config).await;
+            }
+            let results = results;
 
             reporters::report(&results, &format, output.as_deref(), &config)?;
 
@@ -218,6 +229,69 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Run AI triage and print a one-line summary. Failures only warn — the AI
+/// layer must never break the gate, so an untriaged scan proceeds as usual.
+async fn run_ai_triage(
+    results: &mut scanners::ScanResults,
+    path: &std::path::Path,
+    config: &config::Config,
+) {
+    let ja = config.lang == "ja";
+    match ai::triage::run(results, path, config).await {
+        Ok(summary) => {
+            let prefix = format!("  {} {:<10} ... ", "▶".cyan(), "AI Triage");
+            if ja {
+                let mut line = format!(
+                    "{}件を判定 (要対応 {} / 誤検知 {} / 要確認 {})",
+                    summary.triaged,
+                    summary.true_positives,
+                    summary.false_positives,
+                    summary.uncertain
+                );
+                if summary.skipped > 0 {
+                    line.push_str(&format!(
+                        " — {} 件は ai.max-findings 超過のため未判定",
+                        summary.skipped
+                    ));
+                }
+                println!("{}{}", prefix, line);
+                if summary.false_positives > 0 {
+                    println!(
+                        "    誤検知と判定された検出はレポートに残り、--fail-on の集計からは除外されます"
+                    );
+                }
+            } else {
+                let mut line = format!(
+                    "{} triaged ({} true positive, {} false positive, {} uncertain)",
+                    summary.triaged,
+                    summary.true_positives,
+                    summary.false_positives,
+                    summary.uncertain
+                );
+                if summary.skipped > 0 {
+                    line.push_str(&format!(
+                        " — {} left untriaged (over ai.max-findings)",
+                        summary.skipped
+                    ));
+                }
+                println!("{}{}", prefix, line);
+                if summary.false_positives > 0 {
+                    println!(
+                        "    false positives stay in the report but are excluded from the --fail-on gate"
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            scanners::exec::warn_user(
+                &config.lang,
+                &format!("AI triage skipped: {:#}", e),
+                &format!("AI トリアージをスキップしました: {:#}", e),
+            );
+        }
+    }
 }
 
 fn print_banner() {

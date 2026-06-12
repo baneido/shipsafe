@@ -211,6 +211,7 @@ fn parse_gitleaks_output(stdout: &str, allow_patterns: &[Regex]) -> Vec<Finding>
                 fix_suggestion: Some(
                     "Remove the secret and rotate the credential immediately.".to_string(),
                 ),
+                ai_triage: None,
             }
         })
         .collect()

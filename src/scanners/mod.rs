@@ -27,6 +27,9 @@ pub struct Finding {
     pub cwe: Option<String>,
     pub cve: Option<String>,
     pub fix_suggestion: Option<String>,
+    /// AI triage verdict; present only when triage ran for this finding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai_triage: Option<crate::ai::triage::Triage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -67,6 +70,15 @@ impl Severity {
                 Severity::Low => "LOW",
             }
         }
+    }
+}
+
+impl Finding {
+    /// True when the AI triage classified this finding as a false positive.
+    pub fn is_ai_false_positive(&self) -> bool {
+        self.ai_triage
+            .as_ref()
+            .is_some_and(|t| t.verdict == crate::ai::triage::Verdict::FalsePositive)
     }
 }
 
@@ -136,6 +148,9 @@ impl ScanResults {
 
     /// Findings at or above the failure threshold. SCA findings honor the
     /// stricter of the global `--fail-on` and `scanners.sca.fail-on-severity`.
+    ///
+    /// Findings the AI triage marked as false positives stay in the report
+    /// (annotated, for auditability) but are excluded from the gate.
     pub fn failing_findings(&self, fail_on: &str, config: &Config) -> Vec<&Finding> {
         let global = parse_severity(fail_on).unwrap_or_else(|| {
             tracing::warn!(
@@ -151,6 +166,9 @@ impl ScanResults {
         self.findings
             .iter()
             .filter(|f| {
+                if f.is_ai_false_positive() {
+                    return false;
+                }
                 let threshold = if f.scanner == "sca" {
                     &sca_threshold
                 } else {
@@ -369,6 +387,7 @@ mod tests {
             cwe: None,
             cve: None,
             fix_suggestion: None,
+            ai_triage: None,
         }
     }
 
@@ -390,6 +409,7 @@ mod tests {
             cwe: None,
             cve: None,
             fix_suggestion: None,
+            ai_triage: None,
         }
     }
 
@@ -458,6 +478,49 @@ mod tests {
         assert_eq!(r.failing_findings("critical", &config).len(), 1);
         assert_eq!(r.failing_findings("high", &config).len(), 2);
         assert_eq!(r.failing_findings("low", &config).len(), 3);
+    }
+
+    #[test]
+    fn test_ai_false_positive_excluded_from_gate() {
+        use crate::ai::triage::{Triage, TriageConfidence, Verdict};
+        let config = Config::default();
+        let mut fp = finding("sast", Severity::Critical);
+        fp.ai_triage = Some(Triage {
+            verdict: Verdict::FalsePositive,
+            confidence: TriageConfidence::High,
+            reason: "test fixture".into(),
+            model: "claude-opus-4-8".into(),
+        });
+        let mut uncertain = finding("sast", Severity::Critical);
+        uncertain.ai_triage = Some(Triage {
+            verdict: Verdict::Uncertain,
+            confidence: TriageConfidence::Low,
+            reason: "not enough context".into(),
+            model: "claude-opus-4-8".into(),
+        });
+        let r = results_with(vec![fp, uncertain, finding("sast", Severity::Critical)]);
+
+        // The false positive is excluded; uncertain and untriaged still gate.
+        assert_eq!(r.failing_findings("critical", &config).len(), 2);
+        assert_eq!(r.max_severity_exit_code("critical", &config), 1);
+        // The finding itself stays in the report.
+        assert_eq!(r.findings.len(), 3);
+        assert_eq!(r.summary.total, 3);
+    }
+
+    #[test]
+    fn test_all_ai_false_positives_pass_the_gate() {
+        use crate::ai::triage::{Triage, TriageConfidence, Verdict};
+        let config = Config::default();
+        let mut fp = finding("secrets", Severity::Critical);
+        fp.ai_triage = Some(Triage {
+            verdict: Verdict::FalsePositive,
+            confidence: TriageConfidence::High,
+            reason: "documented example value".into(),
+            model: "claude-opus-4-8".into(),
+        });
+        let r = results_with(vec![fp]);
+        assert_eq!(r.max_severity_exit_code("low", &config), 0);
     }
 
     #[test]

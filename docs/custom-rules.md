@@ -43,26 +43,19 @@ scanners:
 
 ## Disabling rules
 
-Disable any rule (bundled or custom) by ID:
+Disable any rule (registry or custom) by ID:
 
 ```yaml
 scanners:
   sast:
     disabled-rules:
-      - "ai-rust-unsafe-block"
+      - "javascript.lang.security.audit.code-string-concat"
 ```
 
-## Bundled AI-generated-code rules
-
-Enabled via `rules: ["ai-generated-code"]`. Sources live in
-[`rules/sast/`](../rules/sast/) with semgrep `--test` cases beside each file.
-
-| File | Rules |
-|---|---|
-| `python.yml` | `ai-py-hardcoded-credentials`, `ai-py-sql-injection-concat`, `ai-py-flask-sensitive-route-no-auth`, `ai-py-unsafe-yaml-load`, `ai-py-eval-on-input`, `ai-py-subprocess-shell-format` |
-| `javascript.yml` | `ai-js-dangerously-set-inner-html`, `ai-js-inner-html-assignment`, `ai-js-document-write`, `ai-express-sensitive-route-no-middleware`, `ai-js-cors-wildcard-credentials`, `ai-js-insecure-cookie-defaults`, `ai-js-eval-interpolation` |
-| `rust.yml` | `ai-rust-mem-transmute`, `ai-rust-static-mut`, `ai-rust-unsafe-block`, `ai-rust-unwrap-in-spawned-thread` |
-| `go.yml` | `ai-go-empty-error-check`, `ai-go-discarded-error`, `ai-go-goroutine-loop-capture`, `ai-go-shell-command-concat` |
+> The bundled `ai-generated-code` rule pack was removed in 0.2.0 — its
+> patterns largely duplicated the OWASP registry pack. Configs that still
+> list it are accepted; the entry is ignored with a warning. For noise
+> reduction, use [AI triage](configuration.md) instead.
 
 ## Testing your rules
 
@@ -80,9 +73,6 @@ ast.literal_eval(user_input)
 ```sh
 semgrep --test rules/
 ```
-
-The shipsafe repository runs `semgrep --test rules/sast/` in CI; copy that
-pattern for your own rules.
 
 ## Custom secret patterns
 

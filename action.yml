@@ -27,6 +27,10 @@ inputs:
     description: 'Path to .shipsafe.yml config file'
     required: false
     default: '.shipsafe.yml'
+  ai-triage:
+    description: 'Run AI triage (requires the ANTHROPIC_API_KEY env var on the job). AI-confirmed false positives are excluded from the fail-on gate but stay in the report.'
+    required: false
+    default: 'false'
   pr-comment:
     description: 'Post results as PR comments (summary + inline)'
     required: false
@@ -96,10 +100,18 @@ runs:
         SHIPSAFE_FORMAT: ${{ inputs.format }}
         SHIPSAFE_LANG: ${{ inputs.lang }}
         SHIPSAFE_CONFIG: ${{ inputs.config }}
+        SHIPSAFE_AI_TRIAGE: ${{ inputs.ai-triage }}
       run: |
         set +e
         EXT="${SHIPSAFE_FORMAT}"
         [ "$EXT" = "table" ] && EXT="txt"
+        AI_FLAG=""
+        if [ "$SHIPSAFE_AI_TRIAGE" = "true" ]; then
+          AI_FLAG="--ai-triage"
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "::warning::ai-triage is enabled but ANTHROPIC_API_KEY is not set — triage will be skipped"
+          fi
+        fi
         shipsafe scan \
           --scanners "${SHIPSAFE_SCANNERS}" \
           --fail-on "${SHIPSAFE_FAIL_ON}" \
@@ -107,7 +119,8 @@ runs:
           --lang "${SHIPSAFE_LANG}" \
           --config "${SHIPSAFE_CONFIG}" \
           --output "shipsafe-results.${EXT}" \
-          --json-output shipsafe-results.json
+          --json-output shipsafe-results.json \
+          $AI_FLAG
         echo "exit-code=$?" >> "$GITHUB_OUTPUT"
 
     - name: Collect outputs
@@ -160,7 +173,10 @@ runs:
             body += `<details><summary>Findings (${Math.min(findings.length, 30)} shown)</summary>\n\n`;
             for (const f of findings.slice(0, 30)) {
               const loc = f.line ? `${f.file}:${f.line}` : f.file;
-              body += `- ${sevIcon[f.severity] || ''} **${f.severity.toUpperCase()}** \`${f.id}\` — ${f.title} (${loc})\n`;
+              const triage = f.ai_triage
+                ? ` · 🤖 ${f.ai_triage.verdict.replace('_', ' ')} (${f.ai_triage.confidence})`
+                : '';
+              body += `- ${sevIcon[f.severity] || ''} **${f.severity.toUpperCase()}** \`${f.id}\` — ${f.title} (${loc})${triage}\n`;
             }
             body += `\n</details>\n`;
           } else {
@@ -196,7 +212,10 @@ runs:
             if (seen.has(key)) continue;
             const fix = f.fix_suggestion ? `\n\n**Suggested fix:** ${f.fix_suggestion}` : '';
             const cwe = f.cwe ? ` (${f.cwe})` : '';
-            const cbody = `<!-- shipsafe-inline -->${sevIcon[f.severity] || ''} **ShipSafe ${f.severity.toUpperCase()}**: ${f.title}${cwe}\n\n${f.description}${fix}`;
+            const triage = f.ai_triage
+              ? `\n\n🤖 **AI triage:** ${f.ai_triage.verdict.replace('_', ' ')} (${f.ai_triage.confidence} confidence) — ${f.ai_triage.reason}`
+              : '';
+            const cbody = `<!-- shipsafe-inline -->${sevIcon[f.severity] || ''} **ShipSafe ${f.severity.toUpperCase()}**: ${f.title}${cwe}\n\n${f.description}${fix}${triage}`;
             try {
               await github.rest.pulls.createReviewComment({
                 owner, repo, pull_number: issue_number,

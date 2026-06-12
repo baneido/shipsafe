@@ -290,7 +290,7 @@ fn test_secrets_detection_japan_cloud_fixture() {
     );
 }
 
-// --- scan: SAST detection on fixtures (semgrep + bundled AI rules) ---
+// --- scan: SAST detection on fixtures (semgrep, OWASP registry pack) ---
 
 #[test]
 fn test_sast_detection_python_fixture() {
@@ -298,122 +298,14 @@ fn test_sast_detection_python_fixture() {
         eprintln!("semgrep missing — skipping detection assertions");
         return;
     }
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(
-        dir.path().join(".shipsafe.yml"),
-        "version: 1\nscanners:\n  sast:\n    rules: [ai-generated-code]\n",
-    )
-    .unwrap();
-    let out = dir.path().join("results.json");
-    let mut cmd = shipsafe();
-    cmd.current_dir(dir.path());
-    cmd.args([
-        "scan",
-        "-p",
-        fixture("python").to_str().unwrap(),
-        "-s",
-        "sast",
-        "--format",
-        "json",
-        "--output",
-        out.to_str().unwrap(),
-    ]);
-    let _ = cmd.assert();
-    let json: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
-    let ids = finding_ids(&json);
-    for expected in [
-        "ai-py-sql-injection-concat",
-        "ai-py-unsafe-yaml-load",
-        "ai-py-subprocess-shell-format",
-    ] {
-        assert!(
-            ids.iter().any(|i| i.contains(expected)),
-            "expected {} in: {:?}",
-            expected,
-            ids
-        );
-    }
-}
-
-#[test]
-fn test_sast_detection_js_fixture() {
-    if !scanner_available("semgrep") {
-        eprintln!("semgrep missing — skipping detection assertions");
-        return;
-    }
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(
-        dir.path().join(".shipsafe.yml"),
-        "version: 1\nscanners:\n  sast:\n    rules: [ai-generated-code]\n",
-    )
-    .unwrap();
-    let out = dir.path().join("results.json");
-    let mut cmd = shipsafe();
-    cmd.current_dir(dir.path());
-    cmd.args([
-        "scan",
-        "-p",
-        fixture("js").to_str().unwrap(),
-        "-s",
-        "sast",
-        "--format",
-        "json",
-        "--output",
-        out.to_str().unwrap(),
-    ]);
-    let _ = cmd.assert();
-    let json: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
-    let ids = finding_ids(&json);
-    for expected in ["ai-js-inner-html-assignment", "ai-js-eval-interpolation"] {
-        assert!(
-            ids.iter().any(|i| i.contains(expected)),
-            "expected {} in: {:?}",
-            expected,
-            ids
-        );
-    }
-}
-
-#[test]
-fn test_sast_detection_rust_fixture() {
-    if !scanner_available("semgrep") {
-        eprintln!("semgrep missing — skipping detection assertions");
-        return;
-    }
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(
-        dir.path().join(".shipsafe.yml"),
-        "version: 1\nscanners:\n  sast:\n    rules: [ai-generated-code]\n",
-    )
-    .unwrap();
-    let out = dir.path().join("results.json");
-    let mut cmd = shipsafe();
-    cmd.current_dir(dir.path());
-    cmd.args([
-        "scan",
-        "-p",
-        fixture("rust").to_str().unwrap(),
-        "-s",
-        "sast",
-        "--format",
-        "json",
-        "--output",
-        out.to_str().unwrap(),
-    ]);
-    let _ = cmd.assert();
-    let json: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
-    let ids = finding_ids(&json);
-    for expected in ["ai-rust-mem-transmute", "ai-rust-static-mut"] {
-        assert!(
-            ids.iter().any(|i| i.contains(expected)),
-            "expected {} in: {:?}",
-            expected,
-            ids
-        );
-    }
+    // The python fixture contains SQL injection / unsafe-yaml / command
+    // injection patterns that the default OWASP Top 10 registry pack flags.
+    let json = scan_json(&fixture("python"), "sast", &[]);
+    let findings = json["findings"].as_array().unwrap();
+    assert!(
+        !findings.is_empty(),
+        "expected OWASP findings in the python fixture, got none"
+    );
 }
 
 // --- scan: SCA detection on fixtures (trivy) ---

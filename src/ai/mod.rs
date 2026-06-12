@@ -1,7 +1,7 @@
 pub mod fix;
 pub mod triage;
 
-// AI module - integrates with Claude API for:
-// 1. Noise reduction / triage (prioritize truly exploitable findings)
-// 2. Fix suggestion generation (generate code fixes for findings)
-// 3. AI-generated code detection (identify and flag AI-written code patterns)
+// AI layer (Claude API, BYOK via ANTHROPIC_API_KEY):
+// - triage: noise reduction — classify findings as true/false positives and
+//   exclude AI-confirmed false positives from the --fail-on gate (shipped).
+// - fix: AI fix suggestion generation (planned).
