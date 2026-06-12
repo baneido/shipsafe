@@ -28,7 +28,7 @@ pub fn render(results: &ScanResults) -> Result<String> {
                 }
             },
             "results": results.findings.iter().map(|f| {
-                json!({
+                let mut result = json!({
                     "ruleId": f.id,
                     "level": match f.severity {
                         Severity::Critical | Severity::High => "error",
@@ -44,7 +44,13 @@ pub fn render(results: &ScanResults) -> Result<String> {
                             }
                         }
                     }]
-                })
+                });
+                // Surface the AI triage verdict so downstream consumers can
+                // audit (or filter on) it.
+                if let Some(ref triage) = f.ai_triage {
+                    result["properties"] = json!({ "aiTriage": triage });
+                }
+                result
             }).collect::<Vec<_>>()
         }]
     });
@@ -69,6 +75,7 @@ mod tests {
             cwe: None,
             cve: None,
             fix_suggestion: None,
+            ai_triage: None,
         }
     }
 
@@ -114,6 +121,28 @@ mod tests {
         let rules = run["tool"]["driver"]["rules"].as_array().unwrap();
         assert_eq!(rules.len(), 4);
         assert_eq!(rules[0]["id"], "rule-critical");
+    }
+
+    #[test]
+    fn test_sarif_includes_ai_triage_properties() {
+        use crate::ai::triage::{Triage, TriageConfidence, Verdict};
+        let mut f = finding("rule-fp", Severity::High, Some(3));
+        f.ai_triage = Some(Triage {
+            verdict: Verdict::FalsePositive,
+            confidence: TriageConfidence::High,
+            reason: "fixture".into(),
+            model: "claude-opus-4-8".into(),
+        });
+        let results = results_with(vec![f, finding("rule-plain", Severity::Low, None)]);
+        let sarif: serde_json::Value = serde_json::from_str(&render(&results).unwrap()).unwrap();
+
+        let res = sarif["runs"][0]["results"].as_array().unwrap();
+        assert_eq!(
+            res[0]["properties"]["aiTriage"]["verdict"],
+            "false_positive"
+        );
+        assert_eq!(res[0]["properties"]["aiTriage"]["confidence"], "high");
+        assert!(res[1].get("properties").is_none());
     }
 
     #[test]

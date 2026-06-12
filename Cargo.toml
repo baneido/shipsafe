@@ -1,6 +1,6 @@
 [package]
 name = "shipsafe"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Baneido <contact@baneido.com>"]
 description = "AI-Powered Pre-Deploy Security Gate"
@@ -27,6 +27,7 @@ glob = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 which = "6"
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
 
 [dev-dependencies]
 assert_cmd = "2"

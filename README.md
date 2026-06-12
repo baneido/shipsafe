@@ -34,7 +34,7 @@ ShipSafe consolidates all of this into a single command:
 
 - **Unified scan in one command** — SAST (semgrep) + SCA (trivy) + secret detection (gitleaks), run in parallel and merged into one deduplicated report
 - **One-line CI/CD integration** — `uses: baneido/shipsafe@v1` gives you PR comments, the GitHub Security tab, and build gating
-- **Rules for AI-generated code** — bundled semgrep rules target the vulnerable patterns AI assistants (Copilot / Cursor / ChatGPT) actually produce, across Python, JS/TS, Rust, and Go
+- **AI triage that cuts the noise** — Claude reviews every finding with its surrounding code and marks clear false positives (test fixtures, sample values, unreachable code). They stay in the report with the reasoning attached, but stop failing your build
 - **Japanese-native support** — CLI output in Japanese (`--lang ja`) and detection rules for Japanese cloud services (Sakura Cloud, LINE, PayPay, freee, kintone)
 - **Fast** — a 100k-line repository scans in about 6 seconds ([benchmarks](docs/benchmarks.md))
 
@@ -85,6 +85,10 @@ shipsafe scan --lang ja
 # Exclude test directories from results
 shipsafe scan --exclude-tests
 
+# AI triage: drop false positives from the gate (requires ANTHROPIC_API_KEY)
+export ANTHROPIC_API_KEY=sk-ant-...
+shipsafe scan --ai-triage --fail-on high
+
 # Validate your config
 shipsafe validate
 ```
@@ -92,26 +96,30 @@ shipsafe validate
 ### Example Output
 
 ```
-  ShipSafe v0.1.0 — Pre-Deploy Security Gate
+  ShipSafe v0.2.0 — Pre-Deploy Security Gate
 
   ▶ SAST       ... 2 findings (1 critical, 1 medium)
   ▶ SCA        ... 1 findings (1 high)
   ▶ Secrets    ... 1 findings (1 critical)
+  ▶ AI Triage  ... 4 triaged (2 true positive, 1 false positive, 1 uncertain)
+    false positives stay in the report but are excluded from the --fail-on gate
 
-!! CRITICAL  ai-py-sql-injection-concat
+!! CRITICAL  python.lang.security.audit.formatted-sql-query
    at app.py:17
-   SQL query built via string concatenation or formatting. ...
+   Detected possible formatted SQL query. Use parameterized queries instead.
+   AI triage: true positive (high confidence) — request parameter flows into the query string unsanitized
 
 !! CRITICAL  Sakura Cloud Credential detected: Sakura Cloud API access token
-   at config.py:2
+   at examples/config.py:2
    Rule: sakura-cloud-api-key | Category: Sakura Cloud Credential
    CWE-798
    Fix: Remove the secret and rotate the credential immediately.
+   AI triage: false positive (high confidence) — placeholder value in documented example code
 
 ====================================================
 Summary: 4 findings | 2 critical | 1 high | 1 medium | 0 low
 
-✘ Build failed: 2 finding(s) at or above the '--fail-on critical' severity threshold
+✘ Build failed: 1 finding(s) at or above the '--fail-on critical' severity threshold
 ```
 
 ## GitHub Actions
@@ -131,9 +139,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: baneido/shipsafe@v1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # for ai-triage
         with:
           scanners: "sast,sca,secrets"
           fail-on: "high"
+          ai-triage: "true"
           lang: "ja"
 ```
 
@@ -150,6 +161,7 @@ repository's **Security** tab.
 | `format` | `sarif` | Report format (`sarif`, `json`, `table`) |
 | `lang` | `en` | Output language (`en`, `ja`) |
 | `config` | `.shipsafe.yml` | Path to configuration file |
+| `ai-triage` | `false` | Run AI triage (set the `ANTHROPIC_API_KEY` env var on the job) |
 | `pr-comment` | `true` | Post summary + inline comments on PRs |
 | `upload-sarif` | `true` | Upload SARIF to the GitHub Security tab |
 | `version` | `latest` | ShipSafe version to install |
@@ -164,10 +176,16 @@ repository's **Security** tab.
 
 ## Features
 
+### AI Triage (noise reduction)
+- Opt-in (`--ai-triage` or `ai.triage: true`), bring your own key: requests go directly to the Anthropic API with your `ANTHROPIC_API_KEY` — nothing passes through ShipSafe servers
+- Claude reviews each finding with ±12 lines of surrounding code and classifies it as true positive / false positive / uncertain, with a one-sentence reason
+- False positives stay in every report (table, JSON, SARIF) with the verdict and reasoning attached — they are only excluded from the `--fail-on` gate. Uncertain findings keep gating (fail safe)
+- Cost controls: one batched API call per scan, `ai.max-findings` cap (default 50, prioritized by severity), configurable `ai.model` (default `claude-opus-4-8`)
+- Never blocks the gate: a missing key, network failure, or API error just skips triage with a warning
+
 ### SAST (Static Analysis)
 - High-precision pattern matching powered by Semgrep
 - OWASP Top 10 coverage (`p/owasp-top-ten`)
-- Bundled rules for AI-generated code patterns: hardcoded credentials, SQL string concatenation, missing auth checks, XSS sinks, unsafe deserialization, command injection, `unsafe` misuse, swallowed errors, goroutine races
 - Custom rules: auto-loaded from your `rules/` directory or via `rules-paths` ([guide](docs/custom-rules.md))
 
 ### SCA (Dependency Scanning)
@@ -197,11 +215,10 @@ scanners:
     enabled: true
     rules:
       - "owasp-top-10"
-      - "ai-generated-code"
     rules-paths:
       - "./security/custom-rules/"
     disabled-rules:
-      - "ai-rust-unsafe-block"
+      - "javascript.lang.security.audit.code-string-concat"
     exclude:
       - "vendor/"
   sca:
@@ -211,6 +228,12 @@ scanners:
     enabled: true
     allow-patterns:
       - "EXAMPLE_.*"
+
+# AI triage (requires ANTHROPIC_API_KEY)
+ai:
+  triage: true
+  model: claude-opus-4-8
+  max-findings: 50
 
 output:
   format: table
@@ -237,8 +260,8 @@ Full reference: [docs/configuration.md](docs/configuration.md)
 
 Planned for upcoming releases (not yet implemented):
 
-- **v0.2.0** — AI-powered noise reduction (reachability-based triage), AI fix suggestions in PR comments, entropy-based unknown-secret detection
-- **v0.3.0** — SBOM generation (CycloneDX / SPDX), IaC scanning, organization dashboards
+- **v0.3.0** — AI fix suggestions in PR comments, entropy-based unknown-secret detection, SBOM generation (CycloneDX / SPDX)
+- **v0.4.0** — IaC scanning, organization dashboards
 
 ## Development
 

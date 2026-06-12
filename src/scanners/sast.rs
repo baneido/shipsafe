@@ -51,55 +51,6 @@ pub async fn run(path: &Path, config: &Config) -> Result<ScanResults> {
     parse_semgrep_json(&stdout)
 }
 
-/// Bundled semgrep rules for AI-generated code patterns, embedded at build
-/// time so the distributed binary does not depend on the repo layout.
-const AI_GENERATED_CODE_RULES: &[(&str, &str)] = &[
-    ("python.yml", include_str!("../../rules/sast/python.yml")),
-    (
-        "javascript.yml",
-        include_str!("../../rules/sast/javascript.yml"),
-    ),
-    ("rust.yml", include_str!("../../rules/sast/rust.yml")),
-    ("go.yml", include_str!("../../rules/sast/go.yml")),
-];
-
-/// Materialize the bundled AI-generated-code rules to a temp directory so
-/// semgrep can consume them via --config. Each file is written to a unique
-/// staging path first and renamed into place so concurrent invocations never
-/// observe a partial file.
-fn ai_generated_code_rules_path() -> std::io::Result<std::path::PathBuf> {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    static STAGING_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-    let dir = std::env::temp_dir().join(format!(
-        "shipsafe-{}-ai-generated-rules",
-        env!("CARGO_PKG_VERSION")
-    ));
-    std::fs::create_dir_all(&dir)?;
-
-    for (name, content) in AI_GENERATED_CODE_RULES {
-        let path = dir.join(name);
-        let staging = dir.join(format!(
-            "{}.{}.{}.staging",
-            name,
-            std::process::id(),
-            STAGING_COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::write(&staging, content)?;
-        if let Err(e) = std::fs::rename(&staging, &path) {
-            // The rename can fail if the destination is locked (e.g. on
-            // Windows while another process reads it). The content is
-            // identical for a given version, so an existing destination is
-            // safe to reuse.
-            let _ = std::fs::remove_file(&staging);
-            if !path.is_file() {
-                return Err(e);
-            }
-        }
-    }
-    Ok(dir)
-}
-
 /// True if the file looks like a semgrep rule file (YAML with a top-level
 /// `rules:` key). Used when auto-discovering a project's rules/ directory so
 /// unrelated YAML never breaks the scan.
@@ -147,17 +98,14 @@ fn build_semgrep_args(cmd: &mut Command, config: &Config, scan_path: &Path) {
                 "owasp-top-10" => {
                     cmd.arg("--config").arg("p/owasp-top-ten");
                 }
-                "ai-generated-code" => match ai_generated_code_rules_path() {
-                    Ok(path) => {
-                        cmd.arg("--config").arg(path);
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "failed to materialize bundled ai-generated-code rules, skipping: {}",
-                            e
-                        );
-                    }
-                },
+                // Removed in 0.2.0: the bundled AI-generated-code rule pack.
+                // Skip (instead of passing the name to semgrep verbatim) so
+                // configs written for 0.1.x don't break the scan.
+                "ai-generated-code" => {
+                    tracing::warn!(
+                        "the bundled 'ai-generated-code' rule pack was removed in 0.2.0 — ignoring"
+                    );
+                }
                 other => {
                     cmd.arg("--config").arg(other);
                 }
@@ -267,6 +215,7 @@ fn parse_semgrep_json(json_str: &str) -> Result<ScanResults> {
                     .and_then(|e| e.get("fix"))
                     .and_then(|f| f.as_str())
                     .map(|s| s.to_string()),
+                ai_triage: None,
             };
             results.findings.push(finding);
         }
@@ -465,7 +414,7 @@ mod tests {
     #[test]
     fn test_custom_rules_args() {
         let mut config = Config::default();
-        config.scanners.sast.rules = vec!["owasp-top-10".into(), "ai-generated-code".into()];
+        config.scanners.sast.rules = vec!["owasp-top-10".into(), "p/django".into()];
         config.scanners.sast.exclude = vec!["vendor".into()];
 
         let mut cmd = Command::new("semgrep");
@@ -473,16 +422,32 @@ mod tests {
 
         let args = get_args(&cmd);
         assert!(args.contains(&"p/owasp-top-ten".to_string()));
-        assert!(args.iter().any(|a| a.ends_with("ai-generated-rules")));
+        assert!(args.contains(&"p/django".to_string()));
         assert!(args.contains(&"--exclude".to_string()));
         assert!(args.contains(&"vendor".to_string()));
+    }
+
+    #[test]
+    fn test_removed_ai_generated_code_pack_is_skipped() {
+        // 0.1.x configs may still list the removed pack; it must be dropped
+        // from the semgrep args instead of being passed verbatim.
+        let mut config = Config::default();
+        config.scanners.sast.rules = vec!["owasp-top-10".into(), "ai-generated-code".into()];
+
+        let mut cmd = Command::new("semgrep");
+        build_semgrep_args(&mut cmd, &config, Path::new("."));
+
+        let args = get_args(&cmd);
+        assert!(args.contains(&"p/owasp-top-ten".to_string()));
+        assert!(!args.iter().any(|a| a.contains("ai-generated")));
     }
 
     #[test]
     fn test_rules_paths_and_disabled_rules_args() {
         let mut config = Config::default();
         config.scanners.sast.rules_paths = vec!["./my-rules/".into()];
-        config.scanners.sast.disabled_rules = vec!["ai-rust-unsafe-block".into()];
+        config.scanners.sast.disabled_rules =
+            vec!["javascript.lang.security.audit.code-string-concat".into()];
 
         let mut cmd = Command::new("semgrep");
         build_semgrep_args(&mut cmd, &config, Path::new("."));
@@ -490,7 +455,7 @@ mod tests {
         let args = get_args(&cmd);
         assert!(args.contains(&"./my-rules/".to_string()));
         assert!(args.contains(&"--exclude-rule".to_string()));
-        assert!(args.contains(&"ai-rust-unsafe-block".to_string()));
+        assert!(args.contains(&"javascript.lang.security.audit.code-string-concat".to_string()));
     }
 
     #[test]
@@ -519,24 +484,5 @@ mod tests {
     #[test]
     fn test_discover_custom_rules_no_dir() {
         assert!(discover_custom_rules(Path::new("/nonexistent-shipsafe")).is_empty());
-    }
-
-    #[test]
-    fn test_ai_generated_code_rules_materialized() {
-        let dir = ai_generated_code_rules_path().unwrap();
-        assert!(dir.is_dir());
-
-        let python = std::fs::read_to_string(dir.join("python.yml")).unwrap();
-        assert!(python.contains("ai-py-hardcoded-credentials"));
-        assert!(python.contains("ai-py-sql-injection-concat"));
-
-        let js = std::fs::read_to_string(dir.join("javascript.yml")).unwrap();
-        assert!(js.contains("ai-js-dangerously-set-inner-html"));
-
-        let rust = std::fs::read_to_string(dir.join("rust.yml")).unwrap();
-        assert!(rust.contains("ai-rust-mem-transmute"));
-
-        let go = std::fs::read_to_string(dir.join("go.yml")).unwrap();
-        assert!(go.contains("ai-go-empty-error-check"));
     }
 }

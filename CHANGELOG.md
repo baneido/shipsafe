@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - Unreleased
+
+### Added
+- **AI triage** (`shipsafe scan --ai-triage` or `ai.triage: true`): Claude
+  reviews each finding with ±12 lines of surrounding code and classifies it
+  as true positive / false positive / uncertain with a one-sentence reason.
+  AI-confirmed false positives stay in every report (table, JSON, SARIF
+  `properties.aiTriage`, PR comments) but are excluded from the `--fail-on`
+  gate; uncertain verdicts keep gating. Opt-in and BYOK (`ANTHROPIC_API_KEY`
+  sent directly to the Anthropic API); one batched request per scan with an
+  `ai.max-findings` cap (default 50) and configurable `ai.model` (default
+  `claude-opus-4-8`). Fails open: any triage error skips triage with a
+  warning and never breaks the scan
+- `ai-triage` input on the GitHub Action; triage verdicts shown in the PR
+  summary and inline review comments
+- New `ai.*` config keys (`model`, `max-findings`, `timeout-seconds`)
+  validated by `shipsafe validate`
+
+### Removed
+- The bundled `ai-generated-code` SAST rule pack. Its patterns largely
+  duplicated `p/owasp-top-ten` and double-reported the same lines; AI triage
+  replaces it as the noise-reduction strategy. Configs that still list
+  `ai-generated-code` are accepted — the entry is ignored with a warning
+
 ## [0.1.0] - 2026-06-12
 
 First public release. 🚀

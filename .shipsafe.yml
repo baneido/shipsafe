@@ -5,7 +5,6 @@ scanners:
     enabled: true
     rules:
       - "owasp-top-10"
-      - "ai-generated-code"
     # Deliberately vulnerable fixtures and rule test files.
     exclude:
       - "fixtures"
@@ -29,9 +28,13 @@ output:
   format: table
   lang: ja
 
+# AI triage (opt-in; requires ANTHROPIC_API_KEY). False positives stay in
+# the report but are excluded from the --fail-on gate.
 ai:
   triage: false
-  fix-suggestions: false
+  model: claude-opus-4-8
+  max-findings: 50
+  timeout-seconds: 120
 
 # Applied to findings from every scanner.
 exclude:

@@ -23,6 +23,7 @@ mod tests {
             cwe: Some("CWE-502".into()),
             cve: Some("CVE-2021-44228".into()),
             fix_suggestion: Some("Upgrade to 2.17.0".into()),
+            ai_triage: None,
         });
         r.recalculate_summary();
         r

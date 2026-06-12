@@ -26,12 +26,14 @@ Developer -> CLI (Rust) -> Scan Orchestrator -> [SAST, SCA, Secrets]
 - **SAST**: Semgrep OSS + custom rules
 - **SCA**: Trivy (primary) + Grype (fallback)
 - **Secrets**: Gitleaks
-- **IaC**: Trivy IaC mode (Phase 2)
+- **IaC**: Trivy IaC mode (planned)
 
-### 4. AI Layer (Phase 2)
-- **Triage**: Claude API for reachability analysis
-- **Fix Suggester**: Claude API for code fix generation
-- **AI Code Classifier**: Detect AI-generated code patterns
+### 4. AI Layer (Claude API, BYOK)
+- **Triage** (shipped): one batched Messages API call per scan classifies
+  findings (with surrounding code context) as true/false positives via
+  structured outputs; false positives are annotated and excluded from the
+  `--fail-on` gate. Opt-in, fails open (a triage error never blocks the scan).
+- **Fix Suggester** (planned): Claude API for code fix generation
 
 ### 5. Output
 - Table (terminal)

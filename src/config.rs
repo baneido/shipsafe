@@ -126,12 +126,35 @@ impl Default for OutputConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", default)]
 pub struct AiConfig {
+    /// Run AI triage after the scan (also enabled by `--ai-triage`).
+    /// Requires the ANTHROPIC_API_KEY environment variable.
     pub triage: bool,
+    /// Claude model used for triage.
+    pub model: String,
+    /// Maximum number of findings sent for triage per scan (cost control).
+    /// Findings are prioritized by severity; the rest are left untriaged.
+    #[serde(alias = "max_findings")]
+    pub max_findings: usize,
+    /// Timeout for the triage API call, in seconds.
+    #[serde(alias = "timeout_seconds")]
+    pub timeout_seconds: u64,
+    /// Reserved for a future release (no effect yet).
     #[serde(alias = "fix_suggestions")]
     pub fix_suggestions: bool,
+}
+impl Default for AiConfig {
+    fn default() -> Self {
+        Self {
+            triage: false,
+            model: "claude-opus-4-8".into(),
+            max_findings: 50,
+            timeout_seconds: 120,
+            fix_suggestions: false,
+        }
+    }
 }
 
 impl Config {
@@ -194,7 +217,19 @@ const KNOWN_KEYS: &[(&str, &[&str])] = &[
         ],
     ),
     ("output", &["format", "lang"]),
-    ("ai", &["triage", "fix-suggestions", "fix_suggestions"]),
+    (
+        "ai",
+        &[
+            "triage",
+            "model",
+            "max-findings",
+            "max_findings",
+            "timeout-seconds",
+            "timeout_seconds",
+            "fix-suggestions",
+            "fix_suggestions",
+        ],
+    ),
 ];
 
 fn check_unknown_keys(value: &serde_yaml::Value, section: &str, errors: &mut Vec<String>) {
@@ -295,6 +330,16 @@ pub fn validate_file(path: &Path) -> Result<Vec<String>> {
 
     if config.scanners.timeout_seconds == 0 {
         errors.push("scanners.timeout-seconds: must be greater than 0".to_string());
+    }
+
+    if config.ai.model.trim().is_empty() {
+        errors.push("ai.model: must not be empty".to_string());
+    }
+    if config.ai.max_findings == 0 {
+        errors.push("ai.max-findings: must be greater than 0".to_string());
+    }
+    if config.ai.timeout_seconds == 0 {
+        errors.push("ai.timeout-seconds: must be greater than 0".to_string());
     }
 
     for pattern in &config.scanners.secrets.allow_patterns {
@@ -508,6 +553,44 @@ exclude:
     }
 
     #[test]
+    fn test_parse_ai_config() {
+        let yaml = r#"
+version: 1
+ai:
+  triage: true
+  model: claude-haiku-4-5
+  max-findings: 10
+  timeout-seconds: 60
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.ai.triage);
+        assert_eq!(config.ai.model, "claude-haiku-4-5");
+        assert_eq!(config.ai.max_findings, 10);
+        assert_eq!(config.ai.timeout_seconds, 60);
+    }
+
+    #[test]
+    fn test_ai_config_defaults() {
+        let config = Config::default();
+        assert!(!config.ai.triage);
+        assert_eq!(config.ai.model, "claude-opus-4-8");
+        assert_eq!(config.ai.max_findings, 50);
+        assert_eq!(config.ai.timeout_seconds, 120);
+    }
+
+    #[test]
+    fn test_validate_bad_ai_values() {
+        let path = write_temp_config(
+            "version: 1\nai:\n  model: \"\"\n  max-findings: 0\n  timeout-seconds: 0\n",
+        );
+        let errors = validate_file(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        assert!(errors.iter().any(|e| e.contains("ai.model")));
+        assert!(errors.iter().any(|e| e.contains("ai.max-findings")));
+        assert!(errors.iter().any(|e| e.contains("ai.timeout-seconds")));
+    }
+
+    #[test]
     fn test_parse_rules_paths_and_disabled_rules() {
         let yaml = r#"
 version: 1
@@ -516,13 +599,13 @@ scanners:
     rules-paths:
       - ./custom-rules/
     disabled-rules:
-      - ai-rust-unsafe-block
+      - javascript.lang.security.audit.code-string-concat
 "#;
         let config: Config = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.scanners.sast.rules_paths, vec!["./custom-rules/"]);
         assert_eq!(
             config.scanners.sast.disabled_rules,
-            vec!["ai-rust-unsafe-block"]
+            vec!["javascript.lang.security.audit.code-string-concat"]
         );
     }
 }

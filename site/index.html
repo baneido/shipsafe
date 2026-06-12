@@ -86,7 +86,7 @@ footer a{color:var(--muted)}
 <main>
 <div class="hero container">
   <h1>デプロイ前に、<em>ワンコマンド</em>で<br>セキュリティゲート。</h1>
-  <p class="sub">SAST・依存関係・シークレット検出を 1 つの CLI に統合。AI が生成しがちな脆弱パターンに特化したルールと日本のクラウドサービス対応。100k 行を約 6 秒でスキャン。</p>
+  <p class="sub">SAST・依存関係・シークレット検出を 1 つの CLI に統合。AI トリアージが誤検知を見分けてビルドを止めない。日本のクラウドサービス対応、100k 行を約 6 秒でスキャン。</p>
   <div class="ctas">
     <a class="btn btn-primary" href="https://github.com/baneido/shipsafe#installation">今すぐインストール</a>
     <a class="btn btn-ghost" href="https://github.com/baneido/shipsafe">GitHub で見る →</a>
@@ -104,7 +104,8 @@ footer a{color:var(--muted)}
     <h2>3 つのスキャナー、1 つのゲート</h2>
     <p class="section-sub">semgrep / trivy / gitleaks を並列実行し、結果を正規化・重複排除して 1 つのレポートに。</p>
     <div class="grid">
-      <div class="card"><span class="icon">🔍</span><h3>SAST</h3><p>semgrep による静的解析。OWASP Top 10 に加え、Copilot / Cursor / ChatGPT が生成しがちな脆弱パターン (SQL 文字列結合、認証チェック欠落、XSS シンク、unsafe 乱用など) を Python / JS / TS / Rust / Go 向けに同梱。</p></div>
+      <div class="card"><span class="icon">🤖</span><h3>AI トリアージ</h3><p>Claude が検出ごとに周辺コードを読み、誤検知 (テストフィクスチャ・サンプル値・到達不能コード) を判定。判定理由つきでレポートに残しつつ、ビルドゲートからは除外。opt-in / 自前の API キーで直接 Anthropic API へ。</p></div>
+      <div class="card"><span class="icon">🔍</span><h3>SAST</h3><p>semgrep による静的解析。OWASP Top 10 ルールパックに加え、rules/ ディレクトリのカスタムルールを自動検出。Python / JS / TS / Rust / Go ほか多言語対応。</p></div>
       <div class="card"><span class="icon">📦</span><h3>SCA</h3><p>trivy による依存関係スキャン。npm / pip / cargo / gem / go mod の CVE を検出し、修正バージョンを提示。重要度しきい値でビルドを制御。</p></div>
       <div class="card"><span class="icon">🔑</span><h3>Secrets</h3><p>gitleaks による 800+ パターンのシークレット検出。さくらのクラウド・LINE・PayPay・freee・kintone など日本のサービスにも対応。Git 履歴スキャンも可能。</p></div>
       <div class="card"><span class="icon">💬</span><h3>PR コメント</h3><p>GitHub Actions に 1 行追加するだけで、PR にサマリーと変更行へのインラインコメントを自動投稿。SARIF は Security タブに統合。</p></div>
@@ -141,7 +142,7 @@ footer a{color:var(--muted)}
         <div class="price">¥0 <small>/ ずっと無料</small></div>
         <ul>
           <li>SAST + SCA + Secrets スキャン</li>
-          <li>AI 生成コード検出ルール</li>
+          <li>AI トリアージ (BYOK: 自前の Anthropic API キー)</li>
           <li>日本クラウドサービス対応</li>
           <li>GitHub Actions / PR コメント</li>
           <li>SARIF / JSON 出力</li>
@@ -153,7 +154,6 @@ footer a{color:var(--muted)}
         <h3>Pro <span class="tag">Coming Soon</span></h3>
         <div class="price">近日公開</div>
         <ul>
-          <li>AI ノイズ除去 (reachability トリアージ)</li>
           <li>AI 修正提案 (PR コメント)</li>
           <li>SBOM 生成 (CycloneDX / SPDX)</li>
           <li>組織ダッシュボード</li>
@@ -194,19 +194,21 @@ footer a{color:var(--muted)}
 <script>
 // Simulated CLI demo (typed line by line).
 const LINES = [
-  ['t-dim', '$ '], ['', 'shipsafe scan --lang ja --fail-on high\n\n'],
-  ['', '  '], ['t-cyan', 'ShipSafe'], ['', ' v0.1.0 — Pre-Deploy Security Gate\n\n'],
+  ['t-dim', '$ '], ['', 'shipsafe scan --lang ja --fail-on high --ai-triage\n\n'],
+  ['', '  '], ['t-cyan', 'ShipSafe'], ['', ' v0.2.0 — Pre-Deploy Security Gate\n\n'],
   ['', '  ▶ SAST       ... '], ['t-yellow', '検出 2 件 (重大 1 件, 中 1 件)\n'],
   ['', '  ▶ SCA        ... '], ['t-yellow', '検出 1 件 (高 1 件)\n'],
-  ['', '  ▶ Secrets    ... '], ['t-yellow', '検出 1 件 (高 1 件)\n\n'],
-  ['t-red', '!! 重大'], ['', '  ai-py-sql-injection-concat\n'],
-  ['t-dim', '   場所: app.py:17 — SQL クエリの文字列結合\n\n'],
+  ['', '  ▶ Secrets    ... '], ['t-yellow', '検出 1 件 (高 1 件)\n'],
+  ['', '  ▶ AI Triage  ... '], ['t-cyan', '4 件を判定 (要対応 2 / 誤検知 1 / 要確認 1)\n\n'],
+  ['t-red', '!! 重大'], ['', '  formatted-sql-query\n'],
+  ['t-dim', '   場所: app.py:17 — SQL クエリの文字列結合\n'],
+  ['t-cyan', '   AI判定:'], ['', ' 要対応 (確信度: 高) — リクエスト値が未検証のままクエリに到達\n\n'],
   ['t-yellow', '!. 高'], ['', '  LINE API Credential detected\n'],
-  ['t-dim', '   場所: config.py:4 | CWE-798\n'],
-  ['t-green', '   修正案:'], ['', ' シークレットを削除し、直ちにローテーションしてください\n\n'],
+  ['t-dim', '   場所: examples/config.py:4 | CWE-798\n'],
+  ['t-cyan', '   AI判定:'], ['', ' 誤検知 (確信度: 高) — ドキュメント用のサンプル値 (ゲート除外)\n\n'],
   ['t-dim', '====================================================\n'],
   ['', '集計: 検出 4 件 | 重大 1 | 高 2 | 中 1 | 低 0\n\n'],
-  ['t-red', '✘ ビルド失敗:'], ['', ' 重要度しきい値 (--fail-on high) 以上の検出が 3 件あります\n'],
+  ['t-red', '✘ ビルド失敗:'], ['', ' 重要度しきい値 (--fail-on high) 以上の検出が 2 件あります\n'],
 ];
 const el = document.getElementById('demo');
 let li = 0, ci = 0;
