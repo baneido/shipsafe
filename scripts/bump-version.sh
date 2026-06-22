@@ -21,8 +21,9 @@ fi
 # Accept a leading "v" (v0.2.2) but work with the bare version everywhere.
 new="${new#v}"
 
-# Validate semver: MAJOR.MINOR.PATCH with an optional -prerelease suffix.
-if ! printf '%s' "$new" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+# Validate semver: MAJOR.MINOR.PATCH (no leading zeros in the numeric parts)
+# with optional -prerelease and +build metadata suffixes.
+if ! printf '%s' "$new" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
   echo "error: '$new' is not a valid semver version (expected e.g. 1.2.3)" >&2
   exit 2
 fi

@@ -31,6 +31,10 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          # Check out the released tag, not the default branch. On a
+          # workflow_dispatch run inputs.tag selects what gets validated, built
+          # and published; on a tag push github.ref already points at the tag.
+          ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
       - name: Check versions are in sync
         env:
@@ -76,6 +80,10 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          # Check out the released tag, not the default branch. On a
+          # workflow_dispatch run inputs.tag selects what gets validated, built
+          # and published; on a tag push github.ref already points at the tag.
+          ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
       - name: Install Rust (stable)
         shell: bash
@@ -114,6 +122,10 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          # Check out the released tag, not the default branch. On a
+          # workflow_dispatch run inputs.tag selects what gets validated, built
+          # and published; on a tag push github.ref already points at the tag.
+          ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -151,6 +163,10 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          # Check out the released tag, not the default branch. On a
+          # workflow_dispatch run inputs.tag selects what gets validated, built
+          # and published; on a tag push github.ref already points at the tag.
+          ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
       - name: Log in to ghcr.io
         env:
@@ -186,6 +202,10 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          # Check out the released tag, not the default branch. On a
+          # workflow_dispatch run inputs.tag selects what gets validated, built
+          # and published; on a tag push github.ref already points at the tag.
+          ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
       - name: Install Rust (stable)
         run: rustup toolchain install stable --profile minimal && rustup default stable
@@ -230,6 +250,10 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          # Check out the released tag, not the default branch. On a
+          # workflow_dispatch run inputs.tag selects what gets validated, built
+          # and published; on a tag push github.ref already points at the tag.
+          ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
       - name: Update baneido/homebrew-tap
         env:
