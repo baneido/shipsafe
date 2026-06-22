@@ -206,11 +206,21 @@ jobs:
           git push --force-with-lease origin "$BRANCH"
 
           export GH_TOKEN="$TAP_TOKEN"
-          gh pr create \
+          # Open a PR, or reuse an existing one (e.g. on a re-run). Only treat a
+          # pre-existing PR as success — any other failure (no permission,
+          # network error) must abort so we don't print a misleading merge
+          # warning for a PR that was never created.
+          if ! gh pr create \
             --title "shipsafe ${VERSION}" \
             --body "Automated Homebrew formula update for shipsafe ${VERSION}." \
-            --head "$BRANCH" --base main \
-            || echo "PR for ${BRANCH} already exists — reusing it"
+            --head "$BRANCH" --base main; then
+            if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+              echo "PR for ${BRANCH} already exists — reusing it"
+            else
+              echo "::error::Failed to create Homebrew formula PR for ${VERSION}"
+              exit 1
+            fi
+          fi
 
           # Merge automatically to keep the release flow hands-off. Falls back to
           # enabling auto-merge, and finally leaves the PR open if the bot lacks
