@@ -30,18 +30,27 @@ fi
 cd "$(git rev-parse --show-toplevel)"
 
 current="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
-if [ "$current" = "$new" ]; then
-  echo "Cargo.toml is already at $new — nothing to do."
+lock_current="$(awk '/^name = "shipsafe"$/{getline; print; exit}' Cargo.lock | sed -E 's/.*"([^"]+)".*/\1/')"
+
+# Only a true no-op when BOTH files already match — otherwise a stale Cargo.lock
+# (e.g. Cargo.toml bumped but the lock left behind) would never get repaired.
+if [ "$current" = "$new" ] && [ "$lock_current" = "$new" ]; then
+  echo "Cargo.toml and Cargo.lock are already at $new — nothing to do."
   exit 0
 fi
 
-echo "Bumping $current -> $new"
-
 # 1. Cargo.toml: only the first `version = ` line (the [package] one).
-perl -i -pe 'if (!$seen && /^version = /) { s/^version = ".*"/version = "'"$new"'"/; $seen = 1 }' Cargo.toml
+if [ "$current" != "$new" ]; then
+  echo "Bumping Cargo.toml $current -> $new"
+  perl -i -pe 'if (!$seen && /^version = /) { s/^version = ".*"/version = "'"$new"'"/; $seen = 1 }' Cargo.toml
+fi
 
 # 2. Cargo.lock: re-lock just the shipsafe entry. --offline keeps it from
-#    touching unrelated dependency versions.
+#    touching unrelated dependency versions. Runs whenever the lock is out of
+#    sync, so it also repairs a stale lock against an already-correct Cargo.toml.
+if [ "$lock_current" != "$new" ]; then
+  echo "Syncing Cargo.lock $lock_current -> $new"
+fi
 cargo update -p shipsafe --offline
 
 echo
