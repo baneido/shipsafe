@@ -1,6 +1,6 @@
 [package]
 name = "shipsafe"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Baneido <contact@baneido.com>"]
 description = "AI-Powered Pre-Deploy Security Gate"
