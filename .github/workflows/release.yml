@@ -17,8 +17,45 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Fail fast if the git tag, Cargo.toml and Cargo.lock disagree. A version that
+  # was bumped in the tag but not in Cargo.toml (or vice-versa) is the usual
+  # cause of a broken `cargo publish` and of Docker/Homebrew artifacts that are
+  # labelled with one version but contain a binary reporting another. Every
+  # publishing job depends on this gate, so the whole release stops here on
+  # mismatch instead of failing halfway through.
+  verify-version:
+    name: Verify tag matches Cargo.toml / Cargo.lock
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Check versions are in sync
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          tag_version="${TAG#v}"
+          toml_version="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          lock_version="$(awk '/^name = "shipsafe"$/{getline; print; exit}' Cargo.lock | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "tag:        $tag_version"
+          echo "Cargo.toml: $toml_version"
+          echo "Cargo.lock: $lock_version"
+          fail=0
+          if [ "$tag_version" != "$toml_version" ]; then
+            echo "::error::Cargo.toml is $toml_version but the tag is v$tag_version. Run 'scripts/bump-version.sh $tag_version', commit, then re-tag the merge commit."
+            fail=1
+          fi
+          if [ "$toml_version" != "$lock_version" ]; then
+            echo "::error::Cargo.lock is $lock_version but Cargo.toml is $toml_version. Run 'cargo update -p shipsafe' and commit Cargo.lock."
+            fail=1
+          fi
+          exit "$fail"
+
   build:
     name: Build (${{ matrix.target }})
+    needs: verify-version
     permissions:
       contents: read
     strategy:
@@ -106,6 +143,7 @@ jobs:
 
   docker:
     name: Push Docker image to ghcr.io
+    needs: verify-version
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -139,6 +177,7 @@ jobs:
 
   crates:
     name: Publish to crates.io
+    needs: verify-version
     runs-on: ubuntu-latest
     # Trusted Publishing: scope id-token to this job only (overrides top-level perms).
     permissions:
@@ -156,7 +195,19 @@ jobs:
       - name: Publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish --locked
+        run: |
+          # Idempotent publish: re-running the release (e.g. because Docker or
+          # Homebrew failed) must not abort on "crate already exists". Skip when
+          # this exact version is already on crates.io.
+          version="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          status="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H 'User-Agent: shipsafe-release (https://github.com/baneido/shipsafe)' \
+            "https://crates.io/api/v1/crates/shipsafe/${version}")"
+          if [ "$status" = "200" ]; then
+            echo "::notice::shipsafe ${version} is already published on crates.io — skipping publish"
+            exit 0
+          fi
+          cargo publish --locked
 
   homebrew:
     name: Update Homebrew formula
