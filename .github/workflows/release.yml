@@ -191,6 +191,40 @@ jobs:
           cd tap
           git config user.name "shipsafe-release-bot"
           git config user.email "contact@baneido.com"
+
+          # The tap's main branch is protected (changes must go through a PR),
+          # so we open a PR from a release branch instead of pushing to main.
           git add Formula/shipsafe.rb
-          git commit -m "shipsafe ${VERSION}" || echo "no changes"
-          git push
+          if git diff --cached --quiet; then
+            echo "Formula already up to date for ${VERSION} — nothing to do"
+            exit 0
+          fi
+
+          BRANCH="shipsafe-${VERSION}"
+          git checkout -b "$BRANCH"
+          git commit -m "shipsafe ${VERSION}"
+          git push --force-with-lease origin "$BRANCH"
+
+          export GH_TOKEN="$TAP_TOKEN"
+          # Open a PR, or reuse an existing one (e.g. on a re-run). Only treat a
+          # pre-existing PR as success — any other failure (no permission,
+          # network error) must abort so we don't print a misleading merge
+          # warning for a PR that was never created.
+          if ! gh pr create \
+            --title "shipsafe ${VERSION}" \
+            --body "Automated Homebrew formula update for shipsafe ${VERSION}." \
+            --head "$BRANCH" --base main; then
+            if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+              echo "PR for ${BRANCH} already exists — reusing it"
+            else
+              echo "::error::Failed to create Homebrew formula PR for ${VERSION}"
+              exit 1
+            fi
+          fi
+
+          # Merge automatically to keep the release flow hands-off. Falls back to
+          # enabling auto-merge, and finally leaves the PR open if the bot lacks
+          # the permission to merge.
+          gh pr merge "$BRANCH" --squash --delete-branch --admin \
+            || gh pr merge "$BRANCH" --squash --delete-branch --auto \
+            || echo "::warning::Homebrew formula PR for ${VERSION} opened but not merged — merge it manually"
