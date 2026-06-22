@@ -60,6 +60,8 @@ echo "  Cargo.lock -> $(awk '/^name = "shipsafe"$/{getline; print; exit}' Cargo.
 echo
 echo "Next steps:"
 echo "  1. Update CHANGELOG.md for $new"
-echo "  2. git switch -c release/$new && git commit -am \"chore: bump version to $new\""
+echo "  2. git switch -c release/$new"
+echo "     git add Cargo.toml Cargo.lock CHANGELOG.md   # stage only the release files"
+echo "     git commit -m \"chore: bump version to $new\""
 echo "  3. Open a PR and merge it, then tag the merge commit:"
 echo "       git tag v$new && git push origin v$new"
