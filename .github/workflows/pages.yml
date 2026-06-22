@@ -10,8 +10,8 @@ on:
     paths: ['site/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
-permissions:
-  contents: write
+# Least privilege at the workflow level; the deploy job opts into what it needs.
+permissions: {}
 
 concurrency:
   group: pages
@@ -20,8 +20,12 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # force-push the built site to the gh-pages branch
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Publish site/ to gh-pages
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
