@@ -1,8 +1,13 @@
 use crate::scanners::{ScanResults, Severity};
 use anyhow::Result;
 use serde_json::json;
+use std::collections::HashSet;
 
 pub fn render(results: &ScanResults) -> Result<String> {
+    // A rule fires once per location but SARIF requires unique ids in
+    // `driver.rules`, so only the first finding for each id defines the rule.
+    let mut seen_rule_ids = HashSet::new();
+
     let sarif = json!({
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "version": "2.1.0",
@@ -12,7 +17,7 @@ pub fn render(results: &ScanResults) -> Result<String> {
                     "name": "ShipSafe",
                     "version": env!("CARGO_PKG_VERSION"),
                     "informationUri": "https://github.com/baneido/shipsafe",
-                    "rules": results.findings.iter().map(|f| {
+                    "rules": results.findings.iter().filter(|f| seen_rule_ids.insert(f.id.as_str())).map(|f| {
                         json!({
                             "id": f.id,
                             "shortDescription": { "text": &f.title },
@@ -121,6 +126,37 @@ mod tests {
         let rules = run["tool"]["driver"]["rules"].as_array().unwrap();
         assert_eq!(rules.len(), 4);
         assert_eq!(rules[0]["id"], "rule-critical");
+    }
+
+    #[test]
+    fn test_sarif_rule_ids_are_unique_across_locations() {
+        let results = results_with(vec![
+            finding("rule-repeated", Severity::High, Some(3)),
+            finding("rule-other", Severity::Low, Some(4)),
+            finding("rule-repeated", Severity::High, Some(5)),
+        ]);
+        let sarif: serde_json::Value = serde_json::from_str(&render(&results).unwrap()).unwrap();
+        let run = &sarif["runs"][0];
+
+        let rule_ids: Vec<&str> = run["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(rule_ids, ["rule-repeated", "rule-other"]);
+
+        // Every location is still reported as its own result.
+        let result_rule_ids: Vec<&str> = run["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["ruleId"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            result_rule_ids,
+            ["rule-repeated", "rule-other", "rule-repeated"]
+        );
     }
 
     #[test]
